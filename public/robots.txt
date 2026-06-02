@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://glintspark.web.app/sitemap.xml

@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "glintspark-34313"
+  },
+  "targets": {
+    "glintspark-34313": {
+      "hosting": {
+        "glintspark": [
+          "glintspark"
+        ]
+      }
+    }
+  }
+}
