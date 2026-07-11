@@ -1,4 +1,7 @@
 {
+  "firestore": {
+    "rules": "firestore.rules"
+  },
   "hosting": {
     "target": "glintspark",
     "public": "dist",
@@ -9,12 +12,9 @@
     ],
     "rewrites": [
       {
-        "source": "/api/**",
-        "run": {
-          "serviceId": "glintspark-go-api",
-          "region": "us-central1"
-        }
-      },
+        "source": "**",
+        "destination": "/index.html"
+      }
     ],
     "headers": [
       {

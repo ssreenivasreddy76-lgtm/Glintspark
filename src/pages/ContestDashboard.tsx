@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Trophy, Clock, Users, ArrowLeft, CheckCircle2, ChevronRight, Lock, Code2, Play } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '../services/supabaseService';
+import { firebaseDB } from '../services/firebaseService';
 import { useChallenges } from '../contexts/ChallengesContext';
 
 // ── Countdown Hook ────────────────────────────────────────────
@@ -37,12 +38,13 @@ export default function ContestDashboard() {
     async function fetchSolved() {
       const { data: userData } = await supabase.auth.getUser();
       if (userData?.user) {
-        const { data } = await supabase
-          .from('solved_challenges')
-          .select('challenge_id')
-          .eq('user_id', userData.user.id);
-        if (data) {
-          setSolvedIds(data.map(d => d.challenge_id));
+        try {
+          const dbSolved = await firebaseDB.getUserSubmissions(userData.user.id);
+          if (dbSolved) {
+            setSolvedIds(dbSolved.map((d: any) => d.challengeId));
+          }
+        } catch (err) {
+          console.error("Failed to load solved status from Firestore:", err);
         }
       }
     }

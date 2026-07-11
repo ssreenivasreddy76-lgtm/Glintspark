@@ -1,4 +1,3 @@
-
 export type Screen =
   | 'SPLASH'
   | 'WELCOME'
@@ -70,3 +69,29 @@ export interface ActivityItem {
 export const APP_TYPES_VERSION = '1.0.0';
 
 export type DummyExport = never;
+
+export interface Challenge {
+  id: string;
+  title?: string;
+  description?: string;
+  difficulty?: 'easy' | 'medium' | 'hard';
+  [key: string]: unknown;
+}
+
+export interface Submission {
+  userId: string;
+  challengeId: string;
+  code: string;
+  language: string;
+  status: string;
+  runtimeMs: number;
+  memoryKb: number;
+}
+
+export interface InterviewSession {
+  userId: string;
+  topic: string;
+  messages: unknown[];
+  feedback: unknown;
+  score: number;
+}

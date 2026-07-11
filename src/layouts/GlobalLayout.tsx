@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal, Sparkles, Globe, MessageCircle, Mail, Search, Bell, MessageSquare, Menu, ChevronDown, ChevronRight, LogOut, User, X, Tv, Camera } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { useAuth } from '../contexts/AuthContext';
+import { AIChat } from '../components/AIChat';
 
 function getInitials(name: string) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -11,19 +12,28 @@ function getInitials(name: string) {
 
 export default function GlobalLayout() {
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const { user, loading, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showProductsMenu, setShowProductsMenu] = useState(false);
   const [showSolutionsMenu, setShowSolutionsMenu] = useState(false);
   
-  const isAppPage = location.pathname !== '/';
+  const isAppPage = !['/', '/products', '/solutions', '/resources', '/pricing', '/about', '/careers', '/privacy', '/terms'].includes(location.pathname);
   const isInterviewRoom = location.pathname.includes('/mock-interview/');
+  const isAdminPage = location.pathname.includes('/admin');
+  const isGuest = sessionStorage.getItem('isGuest') === 'true';
+
+  useEffect(() => {
+    if (!loading && !user && isAppPage && !isGuest) {
+      navigate('/auth', { state: { from: location.pathname + location.search + location.hash } });
+    }
+  }, [user, loading, isAppPage, isGuest, location.pathname, location.search, location.hash, navigate]);
 
   return (
     <div className={`min-h-screen flex flex-col relative ${isInterviewRoom ? 'bg-black' : 'bg-white'} selection:bg-brand-primary/10`}>
       {/* HackerRank Style Dark Header */}
-      {!isInterviewRoom && (
+      {!isInterviewRoom && !isAdminPage && (
         <nav className="fixed top-0 w-full z-50 border-b border-white/5 bg-slate-950/95 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-[68px] flex items-center justify-between">
           
@@ -34,27 +44,43 @@ export default function GlobalLayout() {
             </Link>
 
             {/* Desktop Menu - App Pages */}
-            {isAppPage && (
-              <div className="hidden lg:flex items-center gap-2 text-[15px] font-bold text-slate-400 h-full">
-                <Link to="/dashboard" className={`px-5 h-full flex items-center hover:text-white transition-all relative ${location.pathname === '/dashboard' ? 'text-white' : ''}`}>
+            {/* Desktop Menu - App Pages / Landing Page */}
+            {isAppPage ? (
+              <div className="hidden lg:flex items-center gap-1 text-[14.5px] font-bold text-slate-400 h-full">
+                <Link to="/dashboard" className={`px-4 py-2 rounded-full flex items-center hover:text-white transition-all relative ${location.pathname === '/dashboard' ? 'text-white' : ''}`}>
+                  {location.pathname === '/dashboard' && <motion.div layoutId="navbg" className="absolute inset-0 bg-white/10 rounded-full" style={{ zIndex: -1 }} />}
                   Home
-                  {location.pathname === '/dashboard' && <motion.div layoutId="navline" className="absolute bottom-0 left-0 right-0 h-[3px] bg-brand-primary" />}
                 </Link>
-                <Link to="/curriculum" className={`px-5 h-full flex items-center hover:text-white transition-all relative ${location.pathname === '/curriculum' ? 'text-white' : ''}`}>
+                <Link to="/curriculum" className={`px-4 py-2 rounded-full flex items-center hover:text-white transition-all relative ${location.pathname === '/curriculum' ? 'text-white' : ''}`}>
+                  {location.pathname === '/curriculum' && <motion.div layoutId="navbg" className="absolute inset-0 bg-white/10 rounded-full" style={{ zIndex: -1 }} />}
                   Learn
-                  {location.pathname === '/curriculum' && <motion.div layoutId="navline" className="absolute bottom-0 left-0 right-0 h-[3px] bg-brand-primary" />}
                 </Link>
-                <Link to="/challenges" className={`px-5 h-full flex items-center hover:text-white transition-all relative ${location.pathname === '/challenges' ? 'text-white' : ''}`}>
-                  Challenges
-                  {location.pathname === '/challenges' && <motion.div layoutId="navline" className="absolute bottom-0 left-0 right-0 h-[3px] bg-brand-primary" />}
+                <Link to="/challenges" className={`px-4 py-2 rounded-full flex items-center hover:text-white transition-all relative ${location.pathname === '/challenges' ? 'text-white' : ''}`}>
+                  {location.pathname === '/challenges' && <motion.div layoutId="navbg" className="absolute inset-0 bg-white/10 rounded-full" style={{ zIndex: -1 }} />}
+                  Practice
                 </Link>
-                <Link to="/contests" className={`px-5 h-full flex items-center hover:text-white transition-all relative ${location.pathname === '/contests' ? 'text-white' : ''}`}>
+                <Link to="/contests" className={`px-4 py-2 rounded-full flex items-center hover:text-white transition-all relative ${location.pathname === '/contests' ? 'text-white' : ''}`}>
+                  {location.pathname === '/contests' && <motion.div layoutId="navbg" className="absolute inset-0 bg-white/10 rounded-full" style={{ zIndex: -1 }} />}
                   Contests
-                  {location.pathname === '/contests' && <motion.div layoutId="navline" className="absolute bottom-0 left-0 right-0 h-[3px] bg-brand-primary" />}
                 </Link>
-                <Link to="/leaderboard" className={`px-5 h-full flex items-center hover:text-white transition-all relative ${location.pathname === '/leaderboard' ? 'text-white' : ''}`}>
+                <Link to="/leaderboard" className={`px-4 py-2 rounded-full flex items-center hover:text-white transition-all relative ${location.pathname === '/leaderboard' ? 'text-white' : ''}`}>
+                  {location.pathname === '/leaderboard' && <motion.div layoutId="navbg" className="absolute inset-0 bg-white/10 rounded-full" style={{ zIndex: -1 }} />}
                   Leaderboard
-                  {location.pathname === '/leaderboard' && <motion.div layoutId="navline" className="absolute bottom-0 left-0 right-0 h-[3px] bg-brand-primary" />}
+                </Link>
+              </div>
+            ) : (
+              <div className="hidden lg:flex items-center gap-2 text-[15px] font-bold text-slate-400 h-full">
+                <Link to="/products" className="px-5 h-full flex items-center hover:text-white transition-all">
+                  Products
+                </Link>
+                <Link to="/solutions" className="px-5 h-full flex items-center hover:text-white transition-all">
+                  Solutions
+                </Link>
+                <Link to="/resources" className="px-5 h-full flex items-center hover:text-white transition-all">
+                  Resources
+                </Link>
+                <Link to="/pricing" className="px-5 h-full flex items-center hover:text-white transition-all">
+                  Pricing
                 </Link>
               </div>
             )}
@@ -62,17 +88,19 @@ export default function GlobalLayout() {
 
           {/* Right: Tools / Auth */}
           <div className="flex items-center gap-2 sm:gap-6 h-full">
-            {isAppPage ? (
+            {(user || (isGuest && isAppPage)) ? (
               <>
                 {/* HackerRank Style Search */}
-                <div className="hidden md:flex items-center bg-[#1e293b] rounded border border-slate-800 px-4 py-2 group focus-within:border-brand-primary focus-within:bg-[#0f172a] transition-all w-80">
-                  <Search size={15} className="text-slate-500 group-focus-within:text-brand-primary" />
-                  <input 
-                    type="text" 
-                    placeholder="Search skills, people or topics..." 
-                    className="bg-transparent border-none text-[13px] ml-3 w-full focus:outline-none placeholder:text-slate-500 font-medium text-slate-200"
-                  />
-                </div>
+                {isAppPage && (
+                  <div className="hidden md:flex items-center bg-[#1e293b] rounded border border-slate-800 px-4 py-2 group focus-within:border-brand-primary focus-within:bg-[#0f172a] transition-all w-80">
+                    <Search size={15} className="text-slate-500 group-focus-within:text-brand-primary" />
+                    <input 
+                      type="text" 
+                      placeholder="Search skills, people or topics..." 
+                      className="bg-transparent border-none text-[13px] ml-3 w-full focus:outline-none placeholder:text-slate-500 font-medium text-slate-200"
+                    />
+                  </div>
+                )}
 
                 <div className="flex items-center gap-1 h-full">
                   {/* Messages */}
@@ -111,10 +139,15 @@ export default function GlobalLayout() {
                       >
                         <div className="p-4">
                           {/* User Profile Card */}
-                          {user && (
+                          {user ? (
                             <div className="mb-4 pb-3 border-b border-slate-800/80">
                               <p className="text-white font-bold text-sm truncate">{user.name}</p>
                               <p className="text-slate-400 text-xs truncate mt-0.5">{user.email}</p>
+                            </div>
+                          ) : (
+                            <div className="mb-4 pb-3 border-b border-slate-800/80">
+                              <p className="text-white font-bold text-sm truncate">Guest Session</p>
+                              <Link to="/auth" className="text-brand-primary hover:text-brand-light text-xs font-bold mt-1 inline-block">Create an account &rarr;</Link>
                             </div>
                           )}
                           
@@ -147,7 +180,7 @@ export default function GlobalLayout() {
                             <Link to="/dashboard" onClick={() => setShowUserMenu(false)} className="py-2.5 text-slate-100 hover:text-brand-primary transition border-b border-slate-800/50">Bookmarks</Link>
                             <Link to="/leaderboard" onClick={() => setShowUserMenu(false)} className="py-2.5 text-slate-100 hover:text-brand-primary transition border-b border-slate-800/50">Network</Link>
                             <Link to="/dashboard" onClick={() => setShowUserMenu(false)} className="py-2.5 text-slate-100 hover:text-brand-primary transition border-b border-slate-800/50">Submissions</Link>
-                            <Link to="/company-dashboard" onClick={() => setShowUserMenu(false)} className="py-2.5 text-slate-100 hover:text-brand-primary transition border-b border-slate-800/50">Administration</Link>
+                            <Link to="/company" onClick={() => setShowUserMenu(false)} className="py-2.5 text-slate-100 hover:text-brand-primary transition border-b border-slate-800/50">Administration</Link>
                             <button
                               onClick={() => { logout(); setShowUserMenu(false); }}
                               className="py-3 text-left text-slate-100 hover:text-rose-400 transition font-bold"
@@ -163,10 +196,10 @@ export default function GlobalLayout() {
               </>
             ) : (
               <div className="flex items-center gap-6 h-full">
-                <Link to="/auth" className="text-[15px] font-bold text-slate-300 hover:text-white transition-all tracking-wide">
+                <Link to="/auth" state={{ from: location.pathname + location.search + location.hash }} className="text-[15px] font-bold text-slate-300 hover:text-white transition-all tracking-wide">
                   Login
                 </Link>
-                <Link to="/auth" className="px-8 py-2.5 bg-brand-primary text-white text-[15px] font-bold rounded-lg hover:bg-brand-dark transition-all shadow-lg shadow-brand-primary/20 active:scale-95">
+                <Link to="/auth" state={{ from: location.pathname + location.search + location.hash }} className="px-8 py-2.5 bg-brand-primary text-white text-[15px] font-bold rounded-lg hover:bg-brand-dark transition-all shadow-lg shadow-brand-primary/20 active:scale-95">
                   Create Account
                 </Link>
               </div>
@@ -188,7 +221,7 @@ export default function GlobalLayout() {
             initial={{ opacity:0, x:-20 }} animate={{ opacity:1, x:0 }} exit={{ opacity:0, x:-20 }}
             className="fixed top-[68px] left-0 right-0 z-40 bg-slate-950 border-b border-white/5 lg:hidden"
           >
-            {[['Home','/dashboard'],['Learn','/curriculum'],['Challenges','/challenges'],['Contests','/contests'],['Leaderboard','/leaderboard']].map(([label,path]) => (
+            {[['Home','/dashboard'],['Learn','/curriculum'],['Practice','/challenges'],['Contests','/contests'],['Leaderboard','/leaderboard']].map(([label,path]) => (
               <Link
                 key={path}
                 to={path}
@@ -205,7 +238,7 @@ export default function GlobalLayout() {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className={`flex-1 ${isInterviewRoom ? '' : 'pt-16'}`}>
+      <main className={`flex-1 ${(isInterviewRoom || isAdminPage) ? '' : 'pt-[68px]'}`}>
         <Outlet />
       </main>
 
@@ -230,32 +263,38 @@ export default function GlobalLayout() {
               </div>
               
               <div>
-                <h4 className="font-bold text-white mb-6">Product</h4>
+                <Link to="/products" className="hover:text-brand-light transition">
+                  <h4 className="font-bold text-white mb-6">Product</h4>
+                </Link>
                 <ul className="space-y-4 text-sm text-slate-400">
                   <li><Link to="/curriculum" className="hover:text-brand-light transition">Learning Tracks</Link></li>
                   <li><Link to="/challenges" className="hover:text-brand-light transition">Practice IDE</Link></li>
-                  <li><Link to="/auth" className="hover:text-brand-light transition">Certifications</Link></li>
+                  <li><Link to="/profile?tab=certifications" className="hover:text-brand-light transition">Certifications</Link></li>
                   <li><Link to="/leaderboard" className="hover:text-brand-light transition">Leaderboard Rankings</Link></li>
                 </ul>
               </div>
 
               <div>
-                <h4 className="font-bold text-white mb-6">Resources</h4>
+                <Link to="/resources" className="hover:text-brand-light transition">
+                  <h4 className="font-bold text-white mb-6">Resources</h4>
+                </Link>
                 <ul className="space-y-4 text-sm text-slate-400">
-                  <li><Link to="/" className="hover:text-brand-light transition">Developer Blog</Link></li>
-                  <li><Link to="/" className="hover:text-brand-light transition">Documentation</Link></li>
-                  <li><Link to="/" className="hover:text-brand-light transition">Community Forum</Link></li>
-                  <li><Link to="/" className="hover:text-brand-light transition">Help Center</Link></li>
+                  <li><Link to="/resources" className="hover:text-brand-light transition">Developer Blog</Link></li>
+                  <li><Link to="/resources" className="hover:text-brand-light transition">Documentation</Link></li>
+                  <li><Link to="/resources" className="hover:text-brand-light transition">Community Forum</Link></li>
+                  <li><Link to="/resources" className="hover:text-brand-light transition">Help Center</Link></li>
                 </ul>
               </div>
 
               <div>
-                <h4 className="font-bold text-white mb-6">Company</h4>
+                <Link to="/solutions" className="hover:text-brand-light transition">
+                  <h4 className="font-bold text-white mb-6">Company</h4>
+                </Link>
                 <ul className="space-y-4 text-sm text-slate-400">
-                  <li><Link to="/" className="hover:text-brand-light transition">About Us</Link></li>
-                  <li><Link to="/" className="hover:text-brand-light transition">Careers</Link></li>
-                  <li><Link to="/" className="hover:text-brand-light transition">Privacy Policy</Link></li>
-                  <li><Link to="/" className="hover:text-brand-light transition">Terms of Service</Link></li>
+                  <li><Link to="/about" className="hover:text-brand-light transition">About Us</Link></li>
+                  <li><Link to="/careers" className="hover:text-brand-light transition">Careers</Link></li>
+                  <li><Link to="/privacy" className="hover:text-brand-light transition">Privacy Policy</Link></li>
+                  <li><Link to="/terms" className="hover:text-brand-light transition">Terms of Service</Link></li>
                 </ul>
               </div>
             </div>
@@ -269,6 +308,9 @@ export default function GlobalLayout() {
           </div>
         </footer>
       )}
+      
+      {/* Global Floating AI Chat */}
+      {(user || (isGuest && isAppPage)) && <AIChat />}
     </div>
   );
 }

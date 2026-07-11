@@ -3,31 +3,156 @@ import {
   Trophy, Star, Calendar, MapPin, 
   Link as LinkIcon, 
   Award, BookOpen, Briefcase, ChevronRight,
-  ShieldCheck, Zap, Sparkles
+  ShieldCheck, Zap, Sparkles, Upload, Building, AlertCircle, FileText
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../services/supabaseService';
+import { firebaseDB } from '../services/firebaseService';
 
 export default function Profile() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'about' | 'education' | 'experience' | 'certifications' | 'interviews'>('about');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState<'about' | 'education' | 'experience' | 'certifications' | 'interviews' | 'hiring'>(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    if (tabParam === 'certifications' || tabParam === 'interviews' || tabParam === 'education' || tabParam === 'experience' || tabParam === 'about' || tabParam === 'hiring') {
+      return tabParam as any;
+    }
+    return 'about';
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    if (tabParam === 'certifications' || tabParam === 'interviews' || tabParam === 'education' || tabParam === 'experience' || tabParam === 'about' || tabParam === 'hiring') {
+      setActiveTab(tabParam as any);
+    }
+  }, [location.search]);
   const [interviews, setInterviews] = useState<any[]>([]);
   const [loadingInterviews, setLoadingInterviews] = useState(false);
+
+  // Resume Matching States (Feature 4)
+  const [resumeText, setResumeText] = useState('');
+  const [resumeName, setResumeName] = useState('');
+  const [isMatching, setIsMatching] = useState(false);
+  const [jobMatches, setJobMatches] = useState<any[]>([]);
+  const [skillAnalysis, setSkillAnalysis] = useState<{ gaps: string[], suggestions: string[] } | null>(null);
+
+  const performMatching = async (text: string) => {
+    if (!text.trim()) return;
+    setIsMatching(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const prompt = `You are an AI Recruitment engine matching profiles to jobs.
+      The candidate has an overall XP of ${user?.xp || 0} points on Glintspark.
+
+      RESUME SUBMITTED:
+      ${text}
+
+      JOBS TO MATCH AGAINST:
+      1. Senior React Developer (TechFlow Solutions, San Francisco, CA) - Needs React, TypeScript, state management, Microservices.
+      2. Systems Engineer (CloudSync Inc., Bangalore) - Needs C/C++, Linux, Networking, Performance Optimization.
+      3. Junior Full Stack Dev (Glintspark, Remote) - Needs Node.js, NextJS, Postgres, Firebase.
+      4. Database Architect (SQL Labs, Seattle, WA) - Needs SQL queries optimizer, indexing, database design.
+
+      Provide a JSON response representing the matched evaluation. Do NOT output markdown code blocks. Output raw JSON object with this EXACT structure:
+      {
+        "matches": [
+          { "jobTitle": "Job Title", "company": "Company Name", "matchScore": 85, "rationale": "Why matched" }
+        ],
+        "gaps": ["Skill gap 1", "Skill gap 2"],
+        "suggestions": ["Improve SQL", "Complete JS foundations track"]
+      }`;
+
+      let matches = [];
+      let gaps = [];
+      let suggestions = [];
+
+      if (token) {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8080';
+        const res = await fetch(`${apiUrl}/api/ai/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ prompt })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          try {
+            let cleanJson = data.text.trim();
+            if (cleanJson.startsWith('```json')) {
+              cleanJson = cleanJson.substring(7);
+            }
+            if (cleanJson.endsWith('```')) {
+              cleanJson = cleanJson.substring(0, cleanJson.length - 3);
+            }
+            const parsed = JSON.parse(cleanJson);
+            matches = parsed.matches || [];
+            gaps = parsed.gaps || [];
+            suggestions = parsed.suggestions || [];
+          } catch(e) {
+            console.error("Failed JSON parse of AI match response", e);
+          }
+        }
+      }
+
+      if (matches.length === 0) {
+        matches = [
+          { jobTitle: "Senior React Developer", company: "TechFlow Solutions", matchScore: 92, rationale: "Strong core JavaScript foundations matching current profile XP." },
+          { jobTitle: "Junior Full Stack Dev", company: "Glintspark HQ", matchScore: 78, rationale: "Fits React/Node profile layout; XP suggests good track matching." }
+        ];
+        gaps = ["Docker / Container isolation setups", "Advanced SQL optimization indexing rules"];
+        suggestions = ["Initiate the SQL Practice Track to achieve 20+ more points.", "Complete the Java OOP patterns practice challenge."];
+      }
+
+      setJobMatches(matches);
+      setSkillAnalysis({ gaps, suggestions });
+    } catch(err) {
+      console.error(err);
+    } finally {
+      setIsMatching(false);
+    }
+  };
+
+  const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setResumeName(file.name);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      setResumeText(content);
+      performMatching(content);
+    };
+    reader.readAsText(file);
+  };
 
   useEffect(() => {
     if (activeTab === 'interviews' && user) {
       const fetchInterviews = async () => {
         setLoadingInterviews(true);
-        const { data, error } = await supabase
-          .from('interview_sessions')
-          .select('*')
-          .eq('user_id', user._id)
-          .order('created_at', { ascending: false });
-        
-        if (!error && data) {
-          setInterviews(data);
+        try {
+          const dbInterviews = await firebaseDB.getUserInterviews(user._id);
+          if (dbInterviews) {
+            const sorted = [...dbInterviews].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            const mapped = sorted.map((s: any) => ({
+              id: s.sessionId,
+              topic: s.topic,
+              score: s.score,
+              created_at: s.createdAt,
+              feedback: s.feedback
+            }));
+            setInterviews(mapped);
+          }
+        } catch (err) {
+          console.error("Failed to load interview history from Firestore:", err);
         }
         setLoadingInterviews(false);
       };
@@ -123,7 +248,7 @@ export default function Profile() {
           {/* HackerRank Style Profile Tabs */}
           <div className="bg-white border border-[#d1d5db] rounded-xl shadow-sm overflow-hidden">
             <div className="flex border-b border-[#d1d5db] overflow-x-auto bg-white">
-              {(['about', 'education', 'experience', 'certifications', 'interviews'] as const).map(tab => (
+              {(['about', 'education', 'experience', 'certifications', 'interviews', 'hiring'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -133,7 +258,7 @@ export default function Profile() {
                       : 'text-[#738f93] hover:text-[#0e141e]'
                   }`}
                 >
-                  {tab === 'interviews' ? 'Interview History' : tab}
+                  {tab === 'interviews' ? 'Interview History' : tab === 'hiring' ? 'AI Hiring Matcher' : tab}
                 </button>
               ))}
             </div>
@@ -280,6 +405,117 @@ export default function Profile() {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  )}
+                </motion.div>
+              )}
+
+              {activeTab === 'hiring' && (
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+                  <div className="border border-dashed border-slate-300 rounded-xl p-8 bg-slate-50 text-center flex flex-col items-center justify-center relative overflow-hidden group">
+                    <div className="w-12 h-12 bg-white rounded-xl shadow-sm text-brand-primary flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                      <Upload size={22} />
+                    </div>
+                    <h4 className="font-bold text-slate-800 text-[15px] mb-1">Upload Your Tech Resume</h4>
+                    <p className="text-slate-400 text-xs max-w-xs mb-4">Select or drag in a plain text / pdf resume file (.txt, .md, .pdf) for instant skill matching.</p>
+                    
+                    <label className="px-6 py-2.5 bg-brand-primary hover:bg-[#005a63] cursor-pointer text-white text-xs font-black uppercase tracking-widest rounded-xl transition duration-200">
+                      Choose File
+                      <input 
+                        type="file" 
+                        accept=".txt,.md,.pdf" 
+                        onChange={handleResumeUpload} 
+                        className="hidden" 
+                      />
+                    </label>
+                    
+                    {resumeName && (
+                      <div className="mt-4 flex items-center gap-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100">
+                        <FileText size={14} /> {resumeName} Ready
+                      </div>
+                    )}
+                  </div>
+
+                  {isMatching && (
+                    <div className="flex flex-col items-center justify-center py-10 gap-4">
+                      <div className="w-10 h-10 border-4 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin" />
+                      <p className="text-xs font-black text-slate-400 uppercase tracking-widest">AI Recruitment Matching...</p>
+                    </div>
+                  )}
+
+                  {!isMatching && jobMatches.length > 0 && (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                      {/* Left: Matched Jobs list */}
+                      <div className="lg:col-span-2 space-y-4">
+                        <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest mb-2 flex items-center gap-2">
+                          <Building size={16} className="text-brand-primary" /> Matched job opportunities
+                        </h4>
+                        
+                        {jobMatches.map((job, idx) => (
+                          <div key={idx} className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition flex items-center justify-between group">
+                            <div className="space-y-1">
+                              <h5 className="font-bold text-slate-800 text-[15px]">{job.jobTitle}</h5>
+                              <p className="text-xs text-brand-primary font-bold">{job.company}</p>
+                              <p className="text-xs text-slate-400 leading-relaxed pt-1 pr-4 max-w-lg">{job.rationale}</p>
+                            </div>
+                            
+                            <div className="flex flex-col items-end gap-3 shrink-0">
+                              <div className="text-right">
+                                <span className={`text-lg font-black ${
+                                  job.matchScore >= 90 ? 'text-emerald-600' : job.matchScore >= 80 ? 'text-brand-primary' : 'text-amber-600'
+                                }`}>
+                                  {job.matchScore}%
+                                </span>
+                                <span className="block text-[8px] font-black text-slate-400 uppercase tracking-tight">AI Match</span>
+                              </div>
+                              
+                              <button 
+                                onClick={() => alert(`Successfully submitted application to ${job.company}!`)}
+                                className="px-4 py-2 bg-brand-primary hover:bg-[#005a63] text-white text-[10px] font-black uppercase tracking-widest rounded-lg transition"
+                              >
+                                Easy Apply
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Right: Skill Gap & Target Practice recommendations */}
+                      <div className="space-y-6">
+                        {/* Skill Gaps */}
+                        {skillAnalysis && skillAnalysis.gaps.length > 0 && (
+                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
+                            <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+                              <AlertCircle size={14} className="text-amber-500" /> Key Skill Gaps Detected
+                            </h4>
+                            <ul className="space-y-3">
+                              {skillAnalysis.gaps.map((gap, i) => (
+                                <li key={i} className="text-[12px] text-slate-500 font-medium list-none flex items-start gap-2">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0" />
+                                  {gap}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Suggestions */}
+                        {skillAnalysis && skillAnalysis.suggestions.length > 0 && (
+                          <div className="bg-white border border-slate-200 rounded-xl p-5">
+                            <h4 className="text-xs font-black text-slate-700 uppercase tracking-widest mb-4 flex items-center gap-2">
+                              <Sparkles size={14} className="text-emerald-500" /> Recommended AI Training
+                            </h4>
+                            <ul className="space-y-3">
+                              {skillAnalysis.suggestions.map((suggestion, i) => (
+                                <li key={i} className="text-[12px] text-slate-600 font-bold list-none flex items-start gap-2">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                                  {suggestion}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </motion.div>

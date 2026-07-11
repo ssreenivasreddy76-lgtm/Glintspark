@@ -1,27 +1,45 @@
 import { useState, useEffect } from 'react';
 import React from 'react';
-import { motion } from 'framer-motion';
-import { Search, Filter, Code2, Zap, CheckCircle2, ChevronRight, Star, Hexagon, Globe, ArrowRight, AlertCircle, ArrowLeft, Terminal, Cpu, Database, Braces } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Filter, Code2, Zap, CheckCircle2, ChevronRight, Star, Hexagon, Globe, ArrowRight, AlertCircle, ArrowLeft, Terminal, Cpu, Database, Braces, X } from 'lucide-react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { supabase } from '../services/supabaseService';
+import { firebaseDB } from '../services/firebaseService';
 import { useChallenges } from '../contexts/ChallengesContext';
 
 export default function Challenges() {
   const navigate = useNavigate();
   const { topic } = useParams<{ topic?: string }>();
   const [solvedIds, setSolvedIds] = useState<string[]>([]);
+  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('glintspark_bookmarks');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
   const { tracks: practiceTracks, challenges: allChallenges } = useChallenges();
+
+  const toggleBookmark = (id: string) => {
+    setBookmarkedIds(prev => {
+      const next = prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id];
+      localStorage.setItem('glintspark_bookmarks', JSON.stringify(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     async function fetchSolved() {
       const { data: userData } = await supabase.auth.getUser();
       if (userData?.user) {
-        const { data } = await supabase
-          .from('solved_challenges')
-          .select('challenge_id')
-          .eq('user_id', userData.user.id);
-        if (data) {
-          setSolvedIds(data.map(d => d.challenge_id));
+        try {
+          const dbSolved = await firebaseDB.getUserSubmissions(userData.user.id);
+          if (dbSolved) {
+            setSolvedIds(dbSolved.map((d: any) => d.challengeId));
+          }
+        } catch (err) {
+          console.error("Failed to load solved status from Firestore:", err);
         }
       }
     }
@@ -78,15 +96,18 @@ export default function Challenges() {
   const [selectedDifficulty, setSelectedDifficulty] = useState<string[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
 
   const filteredChallenges = challenges.filter(c => {
     if (selectedDifficulty.length > 0 && !selectedDifficulty.includes(c.difficulty)) return false;
     if (selectedStatus.length > 0 && !selectedStatus.includes(c.status)) return false;
     if (selectedCategories.length > 0 && !selectedCategories.includes(c.category)) return false;
+    if (selectedTopics.length > 0 && !(c.topics || []).some(t => selectedTopics.includes(t))) return false;
     return true;
   });
 
   const uniqueCategories = Array.from(new Set(challenges.map(c => c.category)));
+  const uniqueTopics = Array.from(new Set(challenges.flatMap(c => c.topics || []))).filter(Boolean);
 
   // --- CATALOG: Flat list of ALL challenges across all tracks ---
   const [catalogSearch, setCatalogSearch] = useState('');
@@ -217,7 +238,7 @@ export default function Challenges() {
                   >
                     <div className="flex-1 space-y-2 text-left">
                       <h3
-                        onClick={() => navigate(`/challenges/${prob.id}`)}
+                        onClick={() => navigate(`/challenges/${prob.id}`, { state: { isProctored: false } })}
                         className="text-[20px] font-medium text-[#1e2330] cursor-pointer"
                       >
                         {prob.title}
@@ -231,17 +252,21 @@ export default function Challenges() {
                     </div>
 
                     <div className="flex items-center gap-5 shrink-0">
-                      <Star size={18} className="text-slate-300 hover:text-amber-400 cursor-pointer transition" />
+                      <Star 
+                        size={18} 
+                        onClick={(e) => { e.stopPropagation(); toggleBookmark(prob.id); }}
+                        className={`cursor-pointer transition ${bookmarkedIds.includes(prob.id) ? 'text-amber-400 fill-amber-400' : 'text-slate-300 hover:text-amber-400'}`} 
+                      />
                       {isSolved ? (
                         <button
-                          onClick={() => navigate(`/challenges/${prob.id}`)}
+                          onClick={() => navigate(`/challenges/${prob.id}`, { state: { isProctored: false } })}
                           className="flex items-center gap-2 text-emerald-600 font-bold text-[11px] uppercase tracking-widest min-w-[160px] justify-center border border-emerald-500/30 hover:border-emerald-500 hover:bg-emerald-50/30 rounded-[4px] px-7 py-2.5 transition active:scale-95 cursor-pointer"
                         >
                           <CheckCircle2 size={15} className="text-emerald-500" /> Solved
                         </button>
                       ) : (
                         <button
-                          onClick={() => navigate(`/challenges/${prob.id}`)}
+                          onClick={() => navigate(`/challenges/${prob.id}`, { state: { isProctored: false } })}
                           className="px-7 py-2.5 bg-brand-primary text-white rounded-[4px] text-[11px] font-black uppercase tracking-widest hover:bg-brand-dark transition active:scale-95 min-w-[160px] text-center"
                         >
                           Solve Challenge
@@ -274,9 +299,9 @@ export default function Challenges() {
             
             {/* Breadcrumbs */}
              <div className="flex items-center gap-2 text-[15px] font-medium text-[#738f93] mb-1 leading-none uppercase tracking-wide">
-               <span onClick={() => navigate('/') } className="hover:text-brand-primary cursor-pointer transition">Home</span>
+               <span onClick={() => navigate('/dashboard') } className="hover:text-brand-primary cursor-pointer transition">Home</span>
                <ChevronRight size={14} className="opacity-40" />
-               <span onClick={() => navigate('/challenges')} className="hover:text-brand-primary cursor-pointer transition">Practice Skills</span>
+               <span onClick={() => navigate('/dashboard')} className="hover:text-brand-primary cursor-pointer transition">Challenges</span>
                <ChevronRight size={14} className="opacity-40" />
                <span className="font-bold text-slate-800">{activeTrack.name}</span>
              </div>
@@ -286,7 +311,7 @@ export default function Challenges() {
                 {/* Left Layer: Title */}
                 <div className="flex flex-col items-start gap-2">
                    <h1 className="text-[32px] font-bold text-[#1e2330] tracking-tight leading-none capitalize">
-                      Practice {activeTrack.name} Skills
+                      {activeTrack.name} Challenges
                    </h1>
                 </div>
  
@@ -317,7 +342,7 @@ export default function Challenges() {
                          <div>
                             Rank: <span className="font-bold text-[#39424e]">6311961</span> <span className="text-[#c2c7d0] mx-1.5">|</span> Points: <span className="font-bold text-[#39424e]">{starData.current}/{starData.next || 'MAX'}</span>
                          </div>
-                         <AlertCircle size={20} className="text-[#738f93] fill-[#738f93]/20 hover:text-[#5c6e7a] cursor-pointer transition-colors" />
+                         <AlertCircle onClick={() => navigate('/scoring-rules')} size={20} className="text-[#738f93] fill-[#738f93]/20 hover:text-[#5c6e7a] cursor-pointer transition-colors" />
                       </div>
                    </div>
  
@@ -442,6 +467,33 @@ export default function Challenges() {
                 </div>
              </div>
            )}
+
+           {/* Topics Filter */}
+           {uniqueTopics.length > 0 && (
+             <div className="space-y-4">
+                <h4 className="text-[13px] font-black uppercase tracking-[0.2em] text-slate-500">Topics</h4>
+                <div className="space-y-2">
+                   {uniqueTopics.map(topic => {
+                     const isChecked = selectedTopics.includes(topic);
+                     return (
+                       <label key={topic} className="flex items-center gap-3 cursor-pointer group">
+                          <input 
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              setSelectedTopics(prev => 
+                                isChecked ? prev.filter(t => t !== topic) : [...prev, topic]
+                              );
+                            }}
+                            className="w-4 h-4 border-2 border-slate-300 rounded group-hover:border-brand-primary transition-colors text-brand-primary focus:ring-0" 
+                          />
+                          <span className="text-[15px] font-semibold text-slate-700">{topic}</span>
+                       </label>
+                     );
+                   })}
+                </div>
+             </div>
+           )}
         </aside>
 
         {/* --- MAIN CHALLENGE AREA --- */}
@@ -468,7 +520,7 @@ export default function Challenges() {
                     >
                        <div className="flex-1 space-y-2 text-left">
                           <h3 
-                            onClick={() => navigate(`/challenges/${prob.id}`)}
+                            onClick={() => navigate(`/challenges/${prob.id}`, { state: { isProctored: true } })}
                             className="text-[20px] font-medium text-[#1e2330] cursor-pointer"
                           >
                             {prob.title}
@@ -482,9 +534,13 @@ export default function Challenges() {
                        </div>
 
                        <div className="flex items-center gap-6 text-slate-300 shrink-0">
-                          <Star size={24} className="hover:text-amber-400 cursor-pointer transition fill-current" />
+                          <Star 
+                             size={24} 
+                             onClick={(e) => { e.stopPropagation(); toggleBookmark(prob.id); }}
+                             className={`cursor-pointer transition ${bookmarkedIds.includes(prob.id) ? 'text-amber-400 fill-amber-400' : 'text-slate-300 fill-current hover:text-amber-400'}`} 
+                          />
                           <button 
-                            onClick={() => handleChallengeClick(prob.id)}
+                            onClick={() => navigate(`/challenges/${prob.id}`, { state: { isProctored: true } })}
                             className="px-6 py-2.5 bg-[#4f46e5] text-white rounded-md text-[15px] hover:bg-[#3730a3] transition active:scale-95 min-w-[150px]"
                           >
                              {isSolved ? 'Solve Again' : 'Solve Challenge'}

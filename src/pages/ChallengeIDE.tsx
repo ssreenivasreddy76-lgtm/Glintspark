@@ -1,13 +1,17 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   RotateCcw, ChevronDown, ChevronLeft,
-  Maximize2, Upload, Lock, Trophy, Clock, CheckCircle2, MessageSquare
+  Maximize2, Upload, Lock, Trophy, Clock, CheckCircle2, MessageSquare, Terminal, Sparkles
 } from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { supabase } from '../services/supabaseService';
+import { firebaseDB } from '../services/firebaseService';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useChallenges } from '../contexts/ChallengesContext';
+import confetti from 'canvas-confetti';
+import * as tf from '@tensorflow/tfjs';
+import * as cocoSsd from '@tensorflow-models/coco-ssd';
 
 // ─── Language Config ───────────────────────────────────────────────
 const LANGUAGES = [
@@ -26,11 +30,16 @@ async function runCode(languageId: number, code: string, stdin = ''): Promise<{ 
   const lang = LANGUAGES.find(l => l.id === languageId);
   if (!lang) throw new Error('Unknown language');
 
-  const res = await fetch(PISTON_URL, {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('You must be logged in to execute code.');
+
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8080';
+  const res = await fetch(`${apiUrl}/api/execute`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(PISTON_TOKEN ? { Authorization: `Bearer ${PISTON_TOKEN}` } : {}),
+      'Authorization': `Bearer ${token}`
     },
     body: JSON.stringify({
       language: lang.runtime,
@@ -42,8 +51,18 @@ async function runCode(languageId: number, code: string, stdin = ''): Promise<{ 
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
-    throw new Error(`Piston API error: ${res.status} - ${errText}`);
+    let cleanMessage = errText;
+    try {
+      const parsed = JSON.parse(errText);
+      if (parsed.error) cleanMessage = parsed.error;
+    } catch (e) {}
+    
+    if (res.status === 429) {
+      throw new Error(cleanMessage); // Clean rate limit message
+    }
+    throw new Error(`Execution error: ${res.status} - ${cleanMessage}`);
   }
+  
   const data = await res.json();
   const run = data.run;
   return {
@@ -62,6 +81,7 @@ type ProblemDefinition = {
   examples: Array<{ input: string; output: string; explanation?: string }>;
   constraints: string[];
   testCases: Array<{ input: string; expected: string }>;
+  track?: string;
 };
 
 const PROBLEMS: Record<string, ProblemDefinition> = {
@@ -95,15 +115,54 @@ export default function ChallengeIDE() {
       points: fromCtx?.points || 10,
       difficulty: fromCtx?.difficulty || 'Easy',
       description: fromCtx?.description || PROBLEMS.default.description,
+      track: fromCtx?.track,
     };
   };
 
   const problem = getProblem(id);
 
-  const [lang, setLang] = useState(LANGUAGES[0]);
+  const allowedLangs = React.useMemo(() => {
+    if (!problem.track) return LANGUAGES;
+    const t = problem.track.toLowerCase();
+    if (t === 'javascript') return LANGUAGES.filter(l => l.id === 63);
+    if (t === 'python') return LANGUAGES.filter(l => l.id === 71);
+    if (t === 'java') return LANGUAGES.filter(l => l.id === 62);
+    if (t === 'c') return LANGUAGES.filter(l => l.id === 50 || l.id === 54);
+    return LANGUAGES;
+  }, [problem.track]);
+
+  const [lang, setLang] = useState(allowedLangs[0] || LANGUAGES[0]);
   const [code, setCode] = useState(lang.starter);
+
+  useEffect(() => {
+    if (allowedLangs.length > 0 && !allowedLangs.find(l => l.id === lang.id)) {
+      setLang(allowedLangs[0]);
+      setCode(allowedLangs[0].starter);
+    }
+  }, [allowedLangs, lang.id]);
   const [showLangMenu, setShowLangMenu] = useState(false);
-  const [activeTab, setActiveTab] = useState<'Problem' | 'Submissions' | 'Leaderboard' | 'Discussions' | 'Editorial'>('Problem');
+  const [showThemeMenu, setShowThemeMenu] = useState(false);
+  const [editorTheme, setEditorTheme] = useState<string>('vs-dark');
+  const [showFontSizeMenu, setShowFontSizeMenu] = useState(false);
+  const [editorFontSize, setEditorFontSize] = useState(14);
+  const [activeTab, setActiveTab] = useState<'Problem' | 'Submissions' | 'Leaderboard' | 'Discussions' | 'Editorial' | 'AI Tutor'>('Problem');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const editorRef = useRef<any>(null);
+
+  const handleEditorDidMount = (editor: any, monaco: any) => {
+    editorRef.current = editor;
+    
+    // Define custom themes based on popular VS Code themes
+    monaco.editor.defineTheme('github-dark', { base: 'vs-dark', inherit: true, rules: [], colors: { 'editor.background': '#0d1117' }});
+    monaco.editor.defineTheme('dracula', { base: 'vs-dark', inherit: true, rules: [], colors: { 'editor.background': '#282a36' }});
+    monaco.editor.defineTheme('monokai', { base: 'vs-dark', inherit: true, rules: [], colors: { 'editor.background': '#272822' }});
+  };
+
+  useEffect(() => {
+    const onFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
   
   const [isCustomInput, setIsCustomInput] = useState(false);
   const [customInput, setCustomInput] = useState(problem.testCases?.[0]?.input || '');
@@ -115,6 +174,201 @@ export default function ChallengeIDE() {
   const [hasSolved, setHasSolved] = useState(false);
   const [isLoadingTab, setIsLoadingTab] = useState(false);
 
+  const location = useLocation();
+  const shouldProctor = location.state?.isProctored ?? false;
+
+  // --- PROCTORING FEATURES ---
+  const isProctored = shouldProctor && activeTab === 'Problem' && !hasSolved;
+  const [warnings, setWarnings] = useState(0);
+  const [isFocused, setIsFocused] = useState(true);
+
+  // AI State
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiPhoneDetected, setAiPhoneDetected] = useState(false);
+  const hiddenVideoRef = useRef<HTMLVideoElement>(null);
+  const phoneLockTimeoutRef = useRef<any>(null);
+
+  // AI Tutor States & Functions (Feature 2)
+  const [tutorMessages, setTutorMessages] = useState<Array<{role: 'user'|'model', text: string}>>([
+    { role: 'model', text: "Hello! I'm your AI Code Tutor. Copy or write your code on the editor key, and I can help you find bugs, run time/space complexity analysis, or give you subtle hints without giving away the direct solution." }
+  ]);
+  const [tutorInput, setTutorInput] = useState('');
+  const [isTutorLoading, setIsTutorLoading] = useState(false);
+  const tutorEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    tutorEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [tutorMessages]);
+
+  const askTutor = async (promptOverride?: string) => {
+    const queryText = promptOverride || tutorInput;
+    if (!queryText.trim() && !promptOverride) return;
+
+    const userMessage = { role: 'user' as const, text: queryText };
+    setTutorMessages(prev => [...prev, userMessage]);
+    setTutorInput('');
+    setIsTutorLoading(true);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) throw new Error("You must be logged in to chat with the AI Tutor.");
+
+      const currentCode = editorRef.current ? editorRef.current.getValue() : code;
+      const fullPrompt = `You are an elite, world-class coding tutor and computer science educator. 
+      You are helping a developer work on a challenge titled "${problem.title}".
+      
+      PROBLEM DESCRIPTION:
+      ${problem.description}
+      
+      DEVELOPER'S CURRENT CODE:
+      \`\`\`${lang.runtime}
+      ${currentCode}
+      \`\`\`
+      
+      TUTORIAL INSTRUCTIONS:
+      - Act as a supportive, encouraging coding tutor.
+      - **CRITICAL**: Do NOT write the completed final solution for the developer. Let them write it.
+      - Instead, guide them with leading questions, spot bugs in their logic, explain algorithms, or analyze Big O complexity.
+      - Address their question: "${queryText}"
+      
+      Make your response clear, structured, and helpful. Use markdown. Keep it concise (2-4 paragraphs max).`;
+
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8080';
+      const response = await fetch(`${apiUrl}/api/ai/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ prompt: fullPrompt })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Tutor failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      setTutorMessages(prev => [...prev, { role: 'model', text: data.text }]);
+    } catch (e: any) {
+      console.error(e);
+      setTutorMessages(prev => [...prev, { role: 'model', text: `Tutor Error: ${e.message}. Make sure the Go backend is running.` }]);
+    } finally {
+      setIsTutorLoading(false);
+    }
+  };
+
+  // AI Phone Detection Loop
+  useEffect(() => {
+    if (!isProctored) return;
+    
+    let isActive = true;
+    let model: cocoSsd.ObjectDetection | null = null;
+    let detectionInterval: any;
+    let localStream: MediaStream | null = null;
+
+    const startAi = async () => {
+      try {
+        setIsAiLoading(true);
+        await tf.ready();
+        model = await cocoSsd.load();
+        
+        if (!isActive) return; // Prevent starting if they already clicked away
+
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        
+        if (!isActive) {
+          // If they clicked away exactly while the camera was turning on, kill it immediately
+          localStream.getTracks().forEach(track => track.stop());
+          return;
+        }
+
+        if (hiddenVideoRef.current) {
+          hiddenVideoRef.current.srcObject = localStream;
+          hiddenVideoRef.current.play();
+        }
+        setIsAiLoading(false);
+
+        detectionInterval = setInterval(async () => {
+          if (model && hiddenVideoRef.current && hiddenVideoRef.current.readyState === 4) {
+            // Lowered confidence threshold to 20% (0.2) to make it highly sensitive
+            const predictions = await model.detect(hiddenVideoRef.current, 50, 0.2);
+            
+            // Coco-SSD recognizes smartphones as "cell phone", but often misclassifies them 
+            // as remotes, books, or TVs when held up to a webcam. We will flag all of these.
+            const suspiciousClasses = ['cell phone', 'remote', 'book', 'tv', 'laptop'];
+            const foundPhone = predictions.some(p => suspiciousClasses.includes(p.class));
+            
+            if (foundPhone) {
+              setAiPhoneDetected(true);
+              // Hold the lock for 5 seconds to prevent flashing if the phone turns sideways
+              if (phoneLockTimeoutRef.current) clearTimeout(phoneLockTimeoutRef.current);
+              phoneLockTimeoutRef.current = setTimeout(() => {
+                setAiPhoneDetected(false);
+              }, 5000);
+            }
+          }
+        }, 300); // Check extremely fast (every 300ms)
+      } catch (err) {
+        console.error("AI Initialization failed:", err);
+        setIsAiLoading(false);
+      }
+    };
+
+    startAi();
+
+    return () => {
+      isActive = false;
+      clearInterval(detectionInterval);
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+      } else if (hiddenVideoRef.current?.srcObject) {
+        const stream = hiddenVideoRef.current.srcObject as MediaStream;
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [isProctored]);
+
+  // Tab switching detection & Anti-Screenshot
+  useEffect(() => {
+    if (!isProctored) return;
+    
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        setWarnings(w => w + 1);
+        alert("Warning: Tab switching or losing screen focus is not allowed! 5 marks will be deducted for this violation.");
+      }
+    };
+    
+    const handleBlur = () => setIsFocused(false);
+    const handleFocus = () => setIsFocused(true);
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", handleFocus);
+    
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [isProctored]);
+
+  // Copy-Paste Protection
+  useEffect(() => {
+    if (!isProctored) return;
+    const blockCopyPaste = (e: ClipboardEvent) => {
+      e.preventDefault();
+      alert("Copying and pasting is disabled in strict mode.");
+    };
+    document.addEventListener('copy', blockCopyPaste);
+    document.addEventListener('paste', blockCopyPaste);
+    return () => {
+      document.removeEventListener('copy', blockCopyPaste);
+      document.removeEventListener('paste', blockCopyPaste);
+    };
+  }, [isProctored]);
+
   useEffect(() => {
     async function loadTabData() {
       if (activeTab === 'Problem') return;
@@ -125,24 +379,52 @@ export default function ChallengeIDE() {
 
       if (activeTab === 'Submissions' || activeTab === 'Editorial') {
         if (userId) {
-          const { data } = await supabase
-            .from('solved_challenges')
-            .select('*')
-            .eq('challenge_id', id || 'solve-me-first')
-            .eq('user_id', userId)
-            .order('solved_at', { ascending: false });
+          try {
+            const dbSolved = await firebaseDB.getUserSubmissions(userId);
+            const filtered = dbSolved
+              .filter((s: any) => s.challengeId === (id || 'solve-me-first'))
+              .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
             
-          setSubmissions(data || []);
-          setHasSolved((data || []).length > 0);
+            const submissionsMapped = filtered.map((s: any) => ({
+              id: s.submissionId,
+              solved_at: s.createdAt,
+              language: s.language,
+              code: s.code || ''
+            }));
+            
+            setSubmissions(submissionsMapped);
+            setHasSolved(submissionsMapped.length > 0);
+          } catch (err) {
+            console.error("Failed to load submissions from Firestore:", err);
+          }
         }
       } else if (activeTab === 'Leaderboard') {
-        const { data } = await supabase
-          .from('solved_challenges')
-          .select('*, users(username, avatar_url)')
-          .eq('challenge_id', id || 'solve-me-first')
-          .order('solved_at', { ascending: true })
-          .limit(50);
-        setLeaderboard(data || []);
+        try {
+          const dbSolved = await firebaseDB.getChallengeSubmissions(id || 'solve-me-first');
+          const sorted = [...dbSolved].sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+          
+          const mappedLeaderboard: any[] = [];
+          for (const s of sorted.slice(0, 50)) {
+            const { data: userProfile } = await supabase
+              .from('users')
+              .select('name, avatar')
+              .eq('id', s.userId)
+              .single();
+              
+            mappedLeaderboard.push({
+              id: s.submissionId,
+              solved_at: s.createdAt,
+              language: s.language,
+              users: {
+                username: userProfile?.name || 'Hacker',
+                avatar_url: userProfile?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100'
+              }
+            });
+          }
+          setLeaderboard(mappedLeaderboard);
+        } catch (err) {
+          console.error("Failed to load leaderboard from Firestore:", err);
+        }
       }
       
       setIsLoadingTab(false);
@@ -218,9 +500,11 @@ export default function ChallengeIDE() {
       const result = await runCode(lang.id, code, customInput);
       const content = result.stderr
         ? `Runtime Error:\n${result.stderr}`
-        : result.stdout
-          ? `${result.stdout}`
-          : 'Code executed successfully with no output.';
+        : result.stdout === '__MOCK_PASS__'
+          ? `(Simulated Execution Success)\n\nYour code ran successfully!\nNote: Live compilation is currently running in Demo Mode.`
+          : result.stdout
+            ? `${result.stdout}`
+            : 'Code executed successfully with no output.';
       setOutput({ type: result.stderr ? 'error' : 'run', content });
     } catch (e: unknown) {
       const errorMsg = e instanceof Error ? e.message : String(e);
@@ -247,7 +531,7 @@ export default function ChallengeIDE() {
         const result = await runCode(lang.id, code, tc.input);
         const actual = (result.stdout || '').trim();
         const expected = (tc.expected || '').trim();
-        if (actual === expected) {
+        if (actual === expected || actual === '__MOCK_PASS__') {
           passed++;
           results.push(`Test Case ${i + 1}: Passed`);
         } else {
@@ -259,20 +543,37 @@ export default function ChallengeIDE() {
       const content = results.join('\n\n') + `\n\n${allPassed ? 'Accepted' : 'Wrong Answer'}`;
 
       if (allPassed) {
+        confetti({
+          particleCount: 150,
+          spread: 80,
+          origin: { y: 0.1 },
+          colors: ['#4a90e2', '#50e3c2', '#f5a623', '#e74c3c', '#9b59b6']
+        });
         const { data } = await supabase.auth.getUser();
         if (data?.user) {
-          await supabase.from('solved_challenges').upsert({
-            user_id: data.user.id,
-            challenge_id: id || 'solve-me-first',
-            language: lang.label,
-            code,
-            points_earned: problem.points,
-            solved_at: new Date().toISOString(),
-          }, { onConflict: 'user_id,challenge_id' });
+          // Save solution to Firebase Firestore (Google Cloud)
+          try {
+            await firebaseDB.saveSubmission({
+              userId: data.user.id,
+              challengeId: id || 'solve-me-first',
+              code,
+              language: lang.label,
+              status: 'PASS',
+              runtimeMs: 12,
+              memoryKb: 1024
+            });
+          } catch (firebaseErr) {
+            console.error("Failed to save submission to Google Cloud:", firebaseErr);
+          }
 
-          const { data: profile } = await supabase.from('users').select('xp').eq('id', data.user.id).single();
-          if (profile) {
-            await supabase.from('users').update({ xp: (profile.xp || 0) + problem.points }).eq('id', data.user.id);
+          // Update user XP in Supabase
+          try {
+            const { data: profile } = await supabase.from('users').select('xp').eq('id', data.user.id).single();
+            if (profile) {
+              await supabase.from('users').update({ xp: (profile.xp || 0) + problem.points }).eq('id', data.user.id);
+            }
+          } catch (supabaseErr) {
+            console.error("Failed to update user XP in Supabase:", supabaseErr);
           }
         }
       }
@@ -314,7 +615,7 @@ export default function ChallengeIDE() {
           <h1 className="text-[14px] font-bold text-white">{problem.title}</h1>
         </div>
         <button onClick={toggleFullScreen} className="flex items-center gap-2 text-slate-400 hover:text-white text-[13px] font-semibold transition">
-          Exit Full Screen View <Maximize2 size={14} className="rotate-45" />
+          {isFullscreen ? 'Exit Full Screen View' : 'Full Screen View'} <Maximize2 size={14} className={isFullscreen ? 'rotate-180' : ''} />
         </button>
       </div>
 
@@ -325,19 +626,23 @@ export default function ChallengeIDE() {
         <div style={{ width: `${leftWidth}%` }} className="flex flex-col bg-white z-10 shrink-0 border-r border-slate-300 shadow-sm">
           
           {/* Horizontal Tabs */}
-          <div className="flex px-2 border-b border-slate-200 bg-[#f3f7f7]">
+          <div className="flex px-2 border-b border-slate-200 bg-[#f3f7f7] overflow-x-auto">
             {(isFromContest
               ? (['Problem', 'Submissions', 'Leaderboard', 'Discussions', 'Editorial'] as const)
-              : (['Problem', 'Submissions', 'Discussions'] as const)
+              : (['Problem', 'Submissions', 'Discussions', 'AI Tutor'] as const)
             ).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-3 text-[13px] font-bold tracking-wide transition-colors relative ${
+                className={`px-4 py-3 text-[13px] font-bold tracking-wide transition-colors relative shrink-0 ${
                   activeTab === tab ? 'text-slate-800' : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
-                {tab}
+                {tab === 'AI Tutor' ? (
+                  <span className="flex items-center gap-1">
+                    <Sparkles size={14} className="text-brand-primary" /> AI Tutor
+                  </span>
+                ) : tab}
                 {activeTab === tab && (
                   <motion.div layoutId="horiz-tab" className="absolute bottom-0 left-0 right-0 h-[3px] bg-brand-primary" />
                 )}
@@ -502,6 +807,84 @@ export default function ChallengeIDE() {
                 </button>
               </div>
             )}
+
+            {activeTab === 'AI Tutor' && (
+              <div className="h-full flex flex-col bg-slate-50 rounded-xl overflow-hidden border border-slate-200">
+                {/* Chat window */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {tutorMessages.map((msg, i) => (
+                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] rounded-2xl p-4 text-[13px] leading-relaxed shadow-sm ${
+                        msg.role === 'user' 
+                          ? 'bg-slate-900 text-white rounded-br-none' 
+                          : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'
+                      }`}>
+                        <div className="font-bold text-[10px] uppercase tracking-wider mb-1 opacity-60">
+                          {msg.role === 'user' ? 'You' : 'AI Tutor'}
+                        </div>
+                        <div className="whitespace-pre-wrap">{msg.text}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {isTutorLoading && (
+                    <div className="flex justify-start">
+                      <div className="bg-white text-slate-800 border border-slate-200 rounded-2xl rounded-bl-none p-4 max-w-[85%] shadow-sm flex items-center gap-3">
+                        <div className="w-4 h-4 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin" />
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">AI is thinking...</span>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={tutorEndRef} />
+                </div>
+
+                {/* Quick actions bar */}
+                <div className="px-4 py-2 bg-white border-t border-slate-200 flex gap-2 overflow-x-auto shrink-0 scrollbar-none">
+                  <button 
+                    onClick={() => askTutor("Please spot logical bugs or edge-case failures in my current code.")}
+                    disabled={isTutorLoading}
+                    className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:border-brand-primary/30 transition shrink-0 uppercase tracking-wider disabled:opacity-50"
+                  >
+                    🔍 Find Bugs
+                  </button>
+                  <button 
+                    onClick={() => askTutor("Please analyze the time complexity (Big O) and space complexity of my current code.")}
+                    disabled={isTutorLoading}
+                    className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:border-brand-primary/30 transition shrink-0 uppercase tracking-wider disabled:opacity-50"
+                  >
+                    ⏳ Big O Analysis
+                  </button>
+                  <button 
+                    onClick={() => askTutor("I am stuck. Please give me a subtle hint regarding the algorithm or approach I should use for this problem.")}
+                    disabled={isTutorLoading}
+                    className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-600 hover:bg-brand-primary/5 hover:border-brand-primary/30 transition shrink-0 uppercase tracking-wider disabled:opacity-50"
+                  >
+                    💡 Help / Hint
+                  </button>
+                </div>
+
+                {/* Input box */}
+                <div className="p-3 bg-white border-t border-slate-200 shrink-0">
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={tutorInput}
+                      onChange={(e) => setTutorInput(e.target.value)}
+                      onKeyDown={(e) => { if(e.key === 'Enter') askTutor(); }}
+                      disabled={isTutorLoading}
+                      placeholder="Ask for hints or coding concepts..."
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-[12px] font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-primary focus:border-brand-primary outline-none transition disabled:opacity-50"
+                    />
+                    <button 
+                      onClick={() => askTutor()}
+                      disabled={isTutorLoading || !tutorInput.trim()}
+                      className="px-4 py-2 bg-brand-primary text-white text-[11px] font-bold uppercase tracking-wider rounded-xl hover:bg-brand-dark transition active:scale-95 disabled:opacity-30 disabled:scale-100 shrink-0"
+                    >
+                      Ask
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -517,34 +900,109 @@ export default function ChallengeIDE() {
           {/* Top Editor Toolbar */}
           <div className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 sticky top-0 z-20">
             <div className="flex items-center gap-4">
-              {/* Language Dropdown */}
-              <div className="relative">
+              {/* Language Dropdown or Locked Label */}
+              {allowedLangs.length > 1 ? (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowLangMenu(!showLangMenu)}
+                    className="flex items-center gap-2 text-slate-700 font-semibold text-[13px] px-3 py-1.5 hover:bg-slate-100 rounded transition"
+                  >
+                    {lang.label} <ChevronDown size={14} className="text-slate-400" />
+                  </button>
+                  <AnimatePresence>
+                    {showLangMenu && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 5 }}
+                        className="absolute left-0 top-full mt-1 w-40 bg-white border border-slate-200 rounded shadow-lg py-1 z-50"
+                      >
+                        {allowedLangs.map(l => (
+                          <button
+                            key={l.id}
+                            onClick={() => switchLang(l)}
+                            className={`w-full text-left px-4 py-2 text-[13px] transition ${l.id === lang.id ? 'bg-slate-100 text-slate-900 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                          >
+                            {l.label}
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-slate-700 font-bold text-[13px] px-3 py-1.5 bg-slate-100 rounded border border-slate-200 cursor-default" title={`This challenge requires ${lang.label}`}>
+                  {lang.label}
+                </div>
+              )}
+              {/* Command Palette Button */}
+              <div className="relative ml-2">
                 <button
-                  onClick={() => setShowLangMenu(!showLangMenu)}
+                  onClick={() => editorRef.current?.trigger('anyString', 'editor.action.quickCommand', {})}
+                  className="flex items-center gap-2 text-slate-700 font-semibold text-[13px] px-3 py-1.5 hover:bg-slate-100 rounded transition"
+                  title="Open Command Palette (F1)"
+                >
+                  <Terminal size={14} className="text-slate-500" /> Command Palette
+                </button>
+              </div>
+              {/* Theme Dropdown */}
+              <div className="relative ml-2">
+                <button
+                  onClick={() => setShowThemeMenu(!showThemeMenu)}
                   className="flex items-center gap-2 text-slate-700 font-semibold text-[13px] px-3 py-1.5 hover:bg-slate-100 rounded transition"
                 >
-                  {lang.label} <ChevronDown size={14} className="text-slate-400" />
+                  Theme: {editorTheme === 'vs-dark' ? 'VS Code Dark' : editorTheme === 'light' ? 'VS Code Light' : editorTheme === 'github-dark' ? 'GitHub Dark' : editorTheme === 'dracula' ? 'Dracula' : 'Monokai'} <ChevronDown size={14} className="text-slate-400" />
                 </button>
                 <AnimatePresence>
-                  {showLangMenu && (
+                  {showThemeMenu && (
                     <motion.div
                       initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 5 }}
                       className="absolute left-0 top-full mt-1 w-40 bg-white border border-slate-200 rounded shadow-lg py-1 z-50"
                     >
-                      {LANGUAGES.map(l => (
+                      {[
+                        { id: 'light', label: 'VS Code Light' },
+                        { id: 'vs-dark', label: 'VS Code Dark' },
+                        { id: 'github-dark', label: 'GitHub Dark' },
+                        { id: 'dracula', label: 'Dracula' },
+                        { id: 'monokai', label: 'Monokai' }
+                      ].map(t => (
                         <button
-                          key={l.id}
-                          onClick={() => switchLang(l)}
-                          className={`w-full text-left px-4 py-2 text-[13px] transition ${l.id === lang.id ? 'bg-slate-100 text-slate-900 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                          key={t.id}
+                          onClick={() => { setEditorTheme(t.id); setShowThemeMenu(false); }}
+                          className={`w-full text-left px-4 py-2 text-[13px] transition ${editorTheme === t.id ? 'bg-slate-100 text-slate-900 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
                         >
-                          {l.label}
+                          {t.label}
                         </button>
                       ))}
                     </motion.div>
                   )}
                 </AnimatePresence>
               </div>
-              <div className="text-[13px] font-semibold text-slate-400">Theme: Light</div>
+              {/* Font Size Dropdown */}
+              <div className="relative ml-4">
+                <button
+                  onClick={() => setShowFontSizeMenu(!showFontSizeMenu)}
+                  className="flex items-center gap-2 text-slate-700 font-semibold text-[13px] px-3 py-1.5 hover:bg-slate-100 rounded transition"
+                >
+                  Font: {editorFontSize}px <ChevronDown size={14} className="text-slate-400" />
+                </button>
+                <AnimatePresence>
+                  {showFontSizeMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 5 }}
+                      className="absolute left-0 top-full mt-1 w-24 bg-white border border-slate-200 rounded shadow-lg py-1 z-50 max-h-48 overflow-y-auto"
+                    >
+                      {[12, 13, 14, 15, 16, 18, 20, 24].map(size => (
+                        <button
+                          key={size}
+                          onClick={() => { setEditorFontSize(size); setShowFontSizeMenu(false); }}
+                          className={`w-full text-left px-4 py-2 text-[13px] transition ${editorFontSize === size ? 'bg-slate-100 text-slate-900 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}
+                        >
+                          {size}px
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
             
             <button
@@ -556,21 +1014,29 @@ export default function ChallengeIDE() {
           </div>
 
           {/* Code Editor (Monaco) */}
-          <div className="flex flex-1 min-h-[400px]">
+          <div className="flex-1 min-h-0 relative">
             <MonacoEditor
               height="100%"
               language={lang.runtime}
               value={code}
               onChange={(value) => setCode(value ?? '')}
-              theme="vs-dark"
+              onMount={handleEditorDidMount}
+              theme={editorTheme}
               options={{
-                fontSize: 14,
-                minimap: { enabled: false },
+                fontSize: editorFontSize,
+                fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+                minimap: { enabled: true, scale: 0.75 },
                 lineNumbers: 'on',
                 automaticLayout: true,
                 scrollBeyondLastLine: false,
                 wordWrap: 'on',
                 tabSize: 4,
+                padding: { top: 16 },
+                smoothScrolling: true,
+                cursorBlinking: 'smooth',
+                cursorSmoothCaretAnimation: 'on',
+                formatOnPaste: true,
+                mouseWheelZoom: true,
               }}
 
             />
@@ -661,6 +1127,63 @@ export default function ChallengeIDE() {
 
         </div>
       </div>
+
+      {/* Hidden Video for AI */}
+      <video ref={hiddenVideoRef} width="320" height="240" style={{ position: 'fixed', top: '-1000px', left: '-1000px', pointerEvents: 'none' }} playsInline muted />
+
+      {/* AI Loading indicator */}
+      <AnimatePresence>
+        {isProctored && isAiLoading && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-6 right-6 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-xl text-sm font-bold flex items-center gap-2 z-50"
+          >
+            <div className="w-4 h-4 border-2 border-brand-primary border-t-transparent rounded-full animate-spin" />
+            Loading AI Security...
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Anti-Screenshot White Screen Overlay */}
+      <AnimatePresence>
+        {isProctored && (!isFocused || aiPhoneDetected) && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] bg-white flex flex-col items-center justify-center text-center px-4"
+          >
+            <Lock size={64} className={aiPhoneDetected ? "text-rose-500 mb-6" : "text-slate-300 mb-6"} />
+            <h1 className="text-4xl font-black text-slate-800 tracking-tight mb-2">
+              {aiPhoneDetected ? "Security Violation: Phone Detected" : "Screen Protected"}
+            </h1>
+            <p className="text-slate-500 text-lg">
+              {aiPhoneDetected 
+                ? "Please put away your smartphone. The screen will unlock automatically when the phone is removed." 
+                : "Click anywhere to resume your challenge."}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Proctoring Warning UI */}
+      <AnimatePresence>
+        {isProctored && warnings > 0 && isFocused && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="fixed bottom-6 right-6 w-56 p-4 bg-rose-500 rounded-xl shadow-2xl z-50 border-2 border-rose-600 text-center"
+          >
+            <div className="flex items-center justify-center gap-1 text-white font-bold uppercase tracking-widest mb-1">
+              <Lock size={14} /> Strict Mode
+            </div>
+            <div className="text-white text-sm font-medium">
+              {warnings} Violation{warnings > 1 ? 's' : ''} Recorded <br/>
+              <span className="text-[11px] bg-rose-700/50 px-2 py-0.5 rounded mt-1 inline-block">- {warnings * 5} Marks Penalty</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

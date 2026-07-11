@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { CheckCircle2, ChevronRight, ChevronUp, ChevronDown, BookOpen, Code2 } from 'lucide-react';
+import { useChallenges } from '../contexts/ChallengesContext';
 
 // Map topic names to locally hosted SVG icons (place files in public/icons/)
 const getTopicIcon = (topicStr?: string) => {
@@ -32,39 +33,53 @@ const getTopicIcon = (topicStr?: string) => {
 export default function CurriculumDetail() {
   const { topic } = useParams<{ topic: string }>();
   const navigate = useNavigate();
+  const { challenges } = useChallenges();
 
-  const syllabus = [
-    {
-      level: 'Beginner',
-      title: 'Foundations & Basics',
-      description: 'Master the core syntax and fundamental concepts.',
-      lessons: [
-        { id: 'variables', title: 'Variables & Data Types', type: 'Concept', points: 10, isCompleted: true },
-        { id: 'control-flow', title: 'Control Flow & Logic', type: 'Concept', points: 15, isCompleted: true },
-        { id: 'solve-me-first', title: 'Solve Me First', type: 'Challenge', points: 5, isCompleted: true },
-      ],
-    },
-    {
-      level: 'Intermediate',
-      title: 'Data Structures & Functions',
-      description: 'Learn to organize code and manipulate complex data.',
-      lessons: [
-        { id: 'arrays', title: 'Arrays & Objects', type: 'Concept', points: 20, isCompleted: false },
-        { id: 'functions', title: 'Functions & Scope', type: 'Concept', points: 20, isCompleted: false },
-        { id: 'two-sum-strategy', title: 'Two Sum Strategy', type: 'Challenge', points: 25, isCompleted: false },
-      ],
-    },
-    {
-      level: 'Advanced',
-      title: 'Architecture & Asynchronous',
-      description: 'Build robust, non-blocking applications like a pro.',
-      lessons: [
-        { id: 'async', title: 'Promises & Async/Await', type: 'Concept', points: 30, isCompleted: false },
-        { id: 'api', title: 'Fetching API Data', type: 'Concept', points: 30, isCompleted: false },
-        { id: 'dynamic-array-allocation', title: 'Dynamic Array Allocation', type: 'Challenge', points: 50, isCompleted: false },
-      ],
-    },
-  ];
+  const syllabus = useMemo(() => {
+    // Base hardcoded curriculum concepts
+    const baseSyllabus = [
+      {
+        level: 'Beginner',
+        title: 'Foundations & Basics',
+        description: 'Master the core syntax and fundamental concepts.',
+        lessons: [
+          { id: 'variables', title: 'Variables & Data Types', type: 'Concept', points: 10, isCompleted: true },
+          { id: 'control-flow', title: 'Control Flow & Logic', type: 'Concept', points: 15, isCompleted: true },
+        ],
+      },
+      {
+        level: 'Intermediate',
+        title: 'Data Structures & Functions',
+        description: 'Learn to organize code and manipulate complex data.',
+        lessons: [
+          { id: 'arrays', title: 'Arrays & Objects', type: 'Concept', points: 20, isCompleted: false },
+          { id: 'functions', title: 'Functions & Scope', type: 'Concept', points: 20, isCompleted: false },
+        ],
+      },
+      {
+        level: 'Advanced',
+        title: 'Architecture & Asynchronous',
+        description: 'Build robust, non-blocking applications like a pro.',
+        lessons: [
+          { id: 'async', title: 'Promises & Async/Await', type: 'Concept', points: 30, isCompleted: false },
+          { id: 'api', title: 'Fetching API Data', type: 'Concept', points: 30, isCompleted: false },
+        ],
+      },
+    ];
+
+    // Get track specific challenges
+    const trackChallenges = challenges.filter(c => c.track === topic);
+    
+    // Inject challenges dynamically based on difficulty
+    trackChallenges.forEach(c => {
+      const lessonItem = { id: c.id, title: c.title, type: 'Challenge', points: c.points, isCompleted: false };
+      if (c.difficulty === 'Easy') baseSyllabus[0].lessons.push(lessonItem);
+      else if (c.difficulty === 'Medium') baseSyllabus[1].lessons.push(lessonItem);
+      else if (c.difficulty === 'Hard') baseSyllabus[2].lessons.push(lessonItem);
+    });
+
+    return baseSyllabus;
+  }, [challenges, topic]);
 
   const [expandedLevels, setExpandedLevels] = useState<string[]>(['Beginner']);
 

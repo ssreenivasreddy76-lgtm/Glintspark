@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   Terminal, Mail, Lock, ArrowRight, User, Globe, 
   Command, Sparkles, AlertCircle, CheckCircle2, Loader2,
@@ -11,8 +12,20 @@ import { supabase } from '../services/supabaseService';
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
-  const [userRole, setUserRole] = useState<'developer' | 'company'>('developer');
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+  const [userRole, setUserRole] = useState<'developer' | 'company'>(() => {
+    return location.state?.role === 'company' ? 'company' : 'developer';
+  });
+  const from = (location.state?.from && location.state.from !== '/') ? location.state.from : '/dashboard';
+
+  useEffect(() => {
+    if (user) {
+      sessionStorage.removeItem('isGuest');
+      navigate(from, { replace: true });
+    }
+  }, [user, navigate, from]);
 
   // State bindings for form inputs
   const [name, setName] = useState('');
@@ -30,14 +43,35 @@ export default function Auth() {
     setSuccessMsg(null);
 
     try {
+      if (userRole === 'company' && !email.trim().toLowerCase().endsWith('@glintspark.team')) {
+        throw new Error("Company Access Denied");
+      }
+
       if (isLogin) {
-        // Sign In Flow
+        // 1. Validate if email exists in our registered users database
+        const { data: userCheck, error: checkErr } = await supabase
+          .from('users')
+          .select('id')
+          .eq('email', email.trim());
+
+        if (checkErr) {
+          console.warn("DB email check failed, falling back to standard login:", checkErr);
+        } else if (!userCheck || userCheck.length === 0) {
+          throw new Error("This email address is not registered. Please check the spelling or create an account.");
+        }
+
+        // 2. Sign In Flow
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
         });
-        if (signInError) throw signInError;
-        navigate('/dashboard');
+        if (signInError) {
+          if (signInError.message === 'Invalid login credentials') {
+            throw new Error("Incorrect password. Please verify your credentials and try again.");
+          }
+          throw signInError;
+        }
+        // Navigation is handled by useEffect
       } else {
         // Sign Up Flow
         const { data, error: signUpError } = await supabase.auth.signUp({
@@ -50,7 +84,12 @@ export default function Auth() {
             },
           },
         });
-        if (signUpError) throw signUpError;
+        if (signUpError) {
+          if (signUpError.message === 'User already registered') {
+            throw new Error("This email address is already registered. Please log in to your account or use another email.");
+          }
+          throw signUpError;
+        }
 
         // Client-side fallback check: Insert profile directly into public.users if the postgres trigger isn't active
         if (data.user) {
@@ -75,7 +114,7 @@ export default function Auth() {
         }
 
         if (data.session) {
-          navigate('/dashboard');
+          // Navigation is handled by useEffect
         } else {
           setSuccessMsg('Registration successful! Please check your email for the verification link.');
         }
@@ -91,10 +130,11 @@ export default function Auth() {
     setLoading(true);
     setError(null);
     try {
+      sessionStorage.removeItem('isGuest');
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: window.location.origin + '/dashboard',
+          redirectTo: window.location.origin + from,
         },
       });
       if (oauthError) throw oauthError;
@@ -108,74 +148,104 @@ export default function Auth() {
     <div className="w-full min-h-screen flex bg-white font-sans">
       
       {/* Left Hemisphere - Branding & Graphic (Hidden on mobile) */}
-      <div className="hidden lg:flex flex-1 flex-col justify-between bg-slate-950 p-12 relative overflow-hidden">
-        {/* Background Gradients */}
-        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-brand-primary/20 via-transparent to-transparent z-0"></div>
-        <div className="absolute -bottom-[20%] -right-[20%] w-[80%] h-[80%] bg-purple-600/20 blur-[120px] rounded-full z-0"></div>
-
-        <div className="relative z-10 flex items-center gap-2">
-          <Logo size={32} variant="light" />
+      <div className="hidden lg:flex flex-1 relative overflow-hidden group bg-slate-950">
+        <div className="absolute inset-0 z-0">
+          <img src="/auth-bg.png" alt="Background" className="w-full h-full object-cover transition-transform duration-[2s] ease-out group-hover:scale-105 opacity-80" />
+          <div className="absolute inset-0 bg-slate-950/30 backdrop-blur-[1px]"></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent"></div>
         </div>
 
-        <div className="relative z-10 max-w-lg">
-          <h2 className="text-5xl font-extrabold text-white leading-tight mb-6">
-            {userRole === 'developer' ? (
-              <>The standard for <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-light to-purple-400">mastering code</span></>
-            ) : (
-              <>Hire the top <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-400">tech talent</span></>
-            )}
-          </h2>
-          <p className="text-slate-400 text-lg leading-relaxed mb-8">
-            {userRole === 'developer' 
-              ? 'Join thousands of developers leveling up their logic, crushing interviews, and pushing to production fearlessly.'
-              : 'The ultimate enterprise toolset to evaluate candidates, track performance, and build high-functioning engineering teams.'}
-          </p>
-          
-          <div className="relative z-10 flex flex-col gap-4">
-            {/* Aesthetic grid pattern or element can go here in the future */}
+        <div className="relative z-10 flex flex-col w-full h-full p-12">
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.2 }}
+            className="flex items-center gap-2"
+          >
+            <Logo size={40} variant="light" />
+          </motion.div>
+
+          <div className="mt-auto">
+            <div className="max-w-xl">
+              <motion.h2 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="text-5xl font-black text-white leading-[1.1] mb-6 drop-shadow-2xl tracking-tight"
+              >
+                {userRole === 'developer' ? (
+                  <>The standard for <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">mastering code</span></>
+                ) : (
+                  <>Hire the top <span className="text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-400 to-pink-500">tech talent</span></>
+                )}
+              </motion.h2>
+              <motion.p 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="text-slate-200 text-xl leading-relaxed mb-8 drop-shadow-md font-medium"
+              >
+                {userRole === 'developer' 
+                  ? 'Join thousands of developers leveling up their logic, crushing interviews, and pushing to production fearlessly.'
+                  : 'The ultimate enterprise toolset to evaluate candidates, track performance, and build high-functioning engineering teams.'}
+              </motion.p>
+            </div>
+
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="text-xs font-bold text-slate-400 tracking-widest uppercase mt-4"
+            >
+               © 2026 Glintspark. {userRole === 'developer' ? 'Developer' : 'Enterprise'} Portal.
+            </motion.div>
           </div>
-        </div>
-
-        <div className="relative z-10 text-xs font-mono text-slate-500">
-           © 2026 Glintspark. {userRole === 'developer' ? 'Developer' : 'Enterprise'} Portal.
         </div>
       </div>
 
       {/* Right Hemisphere - Authentication Flow */}
       <div className="flex-1 flex flex-col justify-center items-center p-6 sm:p-12 bg-white relative">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-[420px] relative z-10">
+          
           {/* Role Switcher */}
-          <div className="flex p-1 bg-slate-100 rounded-2xl mb-12 shadow-inner border border-slate-200">
+          <div className="flex p-1.5 bg-slate-100/80 backdrop-blur-md rounded-2xl mb-12 shadow-inner border border-slate-200/60 relative">
+            <motion.div 
+              className="absolute top-1.5 bottom-1.5 w-[calc(50%-0.375rem)] bg-white rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.06)] border border-slate-200/50 z-0"
+              initial={false}
+              animate={{ x: userRole === 'developer' ? 0 : '100%' }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+              style={{ left: '0.375rem' }}
+            />
             <button 
               onClick={() => setUserRole('developer')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                userRole === 'developer' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700'
+              className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-extrabold rounded-xl transition-colors relative z-10 ${
+                userRole === 'developer' ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              <User size={16} /> Developer
+              <User size={16} className={userRole === 'developer' ? 'text-indigo-600' : ''} /> Developer
             </button>
             <button 
               onClick={() => setUserRole('company')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-bold rounded-xl transition-all ${
-                userRole === 'company' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700'
+              className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-extrabold rounded-xl transition-colors relative z-10 ${
+                userRole === 'company' ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              <Globe size={16} /> Company
+              <Globe size={16} className={userRole === 'company' ? 'text-fuchsia-600' : ''} /> Company
             </button>
           </div>
 
           <AnimatePresence mode="wait">
             <motion.div
               key={`${isLogin}-${userRole}`}
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.02 }}
-              transition={{ duration: 0.2 }}
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
             >
-              <h1 className="text-3xl font-extrabold text-slate-900 mb-2">
+              <h1 className="text-4xl font-black text-slate-900 mb-3 tracking-tight">
                 {isLogin ? (userRole === 'developer' ? 'Welcome back' : 'Enterprise Login') : (userRole === 'developer' ? 'Create an account' : 'Partner with us')}
               </h1>
-              <p className="text-slate-500 mb-8">
+              <p className="text-slate-500 text-lg mb-8 font-medium">
                 {isLogin 
                   ? 'Access your unified developer workspace.' 
                   : (userRole === 'developer' ? 'Start your journey to software mastery today.' : 'Build your custom hiring pipeline in seconds.')}
@@ -183,15 +253,15 @@ export default function Auth() {
 
               {/* Feedback messages */}
               {error && (
-                <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-sm flex items-center gap-2">
-                  <AlertCircle size={18} className="shrink-0" />
+                <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-sm font-medium flex items-center gap-3">
+                  <AlertCircle size={20} className="shrink-0" />
                   <span>{error}</span>
                 </div>
               )}
 
               {successMsg && (
-                <div className="mb-6 p-4 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-600 text-sm flex items-center gap-2">
-                  <CheckCircle2 size={18} className="shrink-0" />
+                <div className="mb-6 p-4 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-600 text-sm font-medium flex items-center gap-3">
+                  <CheckCircle2 size={20} className="shrink-0" />
                   <span>{successMsg}</span>
                 </div>
               )}
@@ -201,8 +271,8 @@ export default function Auth() {
                 
                 {!isLogin && (
                   <div className="space-y-4">
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-primary transition-colors">
                         <User size={18} />
                       </div>
                       <input 
@@ -210,15 +280,15 @@ export default function Auth() {
                         placeholder={userRole === 'developer' ? "Full Name" : "Company Name"}
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all text-slate-900 placeholder:text-slate-400"
+                        className="w-full pl-11 pr-4 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
                         required
                       />
                     </div>
                   </div>
                 )}
 
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-primary transition-colors">
                     <Mail size={18} />
                   </div>
                   <input 
@@ -226,14 +296,14 @@ export default function Auth() {
                     placeholder={userRole === 'developer' ? "Email address" : "Work email"}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all text-slate-900 placeholder:text-slate-400"
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
                     required
                     autoComplete="email"
                   />
                 </div>
 
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                <div className="relative group">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-primary transition-colors">
                     <Lock size={18} />
                   </div>
                   <input 
@@ -241,24 +311,24 @@ export default function Auth() {
                     placeholder="Password" 
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all text-slate-900 placeholder:text-slate-400"
+                    className="w-full pl-11 pr-12 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
                     required
                     autoComplete={isLogin ? "current-password" : "new-password"}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
 
-                <div className="pt-2">
+                <div className="pt-3">
                   <button 
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-500 text-white font-semibold py-3 px-4 rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
+                    className="w-full bg-slate-900 hover:bg-indigo-600 hover:-translate-y-0.5 disabled:bg-slate-500 disabled:hover:translate-y-0 text-white font-bold py-3.5 px-4 rounded-xl transition-all duration-300 shadow-xl hover:shadow-indigo-500/25 flex items-center justify-center gap-2"
                   >
                     {loading ? (
                       <Loader2 size={18} className="animate-spin" />
@@ -269,19 +339,19 @@ export default function Auth() {
                 </div>
               </form>
 
-              {/* Separator - Hidden for companies sometimes, but keep for now */}
-              <div className="mt-8 flex items-center justify-between">
-                <span className="border-b border-slate-200 w-1/5 lg:w-1/4"></span>
-                <span className="text-xs text-center text-slate-500 uppercase font-semibold">Or continue with</span>
-                <span className="border-b border-slate-200 w-1/5 lg:w-1/4"></span>
+              {/* Separator */}
+              <div className="mt-8 flex items-center justify-between opacity-80">
+                <span className="border-b border-slate-200 w-full"></span>
+                <span className="text-[10px] text-center text-slate-400 uppercase font-black px-4 tracking-widest whitespace-nowrap">Or continue with</span>
+                <span className="border-b border-slate-200 w-full"></span>
               </div>
 
               {/* OAuth Providers */}
-              <div className="mt-6 grid grid-cols-2 gap-4">
+              <div className="mt-8 grid grid-cols-2 gap-4">
                 <button 
                   onClick={() => handleOAuth('google')}
                   disabled={loading}
-                  className="flex items-center justify-center gap-2 py-2.5 border border-slate-200 hover:bg-slate-50 disabled:bg-slate-100 rounded-xl text-sm font-semibold text-slate-700 transition shadow-sm"
+                  className="flex items-center justify-center gap-2.5 py-3 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 hover:-translate-y-0.5 disabled:bg-slate-100 disabled:hover:translate-y-0 rounded-xl text-sm font-bold text-slate-700 transition-all duration-300 shadow-sm"
                 >
                   <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
                     <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.7 17.74 9.5 24 9.5z"/>
@@ -294,7 +364,7 @@ export default function Auth() {
                 <button 
                   onClick={() => handleOAuth('github')}
                   disabled={loading}
-                  className="flex items-center justify-center gap-2 py-2.5 bg-[#24292e] hover:bg-[#1b1f23] disabled:bg-slate-500 text-white shadow-sm rounded-xl text-sm font-semibold transition"
+                  className="flex items-center justify-center gap-2.5 py-3 bg-[#1e2327] hover:bg-[#15181a] hover:-translate-y-0.5 disabled:bg-slate-500 disabled:hover:translate-y-0 text-white shadow-md hover:shadow-xl rounded-xl text-sm font-bold transition-all duration-300"
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
                     <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.295 2.747-1.026 2.747-1.026.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12c0-5.523-4.477-10-10-10z"/>
@@ -303,29 +373,33 @@ export default function Auth() {
                 </button>
               </div>
 
-              {/* Guest Access */}
-              <div className="mt-6">
-                <button
-                  type="button"
-                  onClick={() => navigate(userRole === 'company' ? '/admin' : '/dashboard')}
-                  className="w-full py-3 px-4 rounded-xl border border-dashed border-slate-300 text-slate-500 hover:border-slate-400 hover:text-slate-700 hover:bg-slate-50 text-sm font-medium transition-all"
-                >
-                  Continue as Guest (No login required)
-                </button>
-              </div>
+              {/* Guest Access - Only visible on localhost for testing */}
+              {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sessionStorage.setItem('isGuest', 'true');
+                      navigate(userRole === 'company' ? '/admin' : from);
+                    }}
+                    className="w-full py-3.5 px-4 rounded-xl border-2 border-dashed border-slate-200 text-slate-500 hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50/50 text-sm font-bold transition-all duration-300"
+                  >
+                    Continue as Guest (Local Dev Only)
+                  </button>
+                </div>
+              )}
 
               {/* Footer Links */}
-              <div className="mt-6 text-center text-sm text-slate-500 font-medium">
+              <div className="mt-8 text-center text-sm text-slate-500 font-semibold">
                 {isLogin ? "Don't have an account? " : "Already have an account? "}
                 <button 
                   onClick={() => setIsLogin(!isLogin)} 
-                  className="text-brand-primary hover:text-brand-dark font-bold hover:underline"
+                  className="text-indigo-600 hover:text-indigo-700 font-black hover:underline underline-offset-4 transition-all"
                 >
                   {isLogin ? 'Sign up' : 'Log in'}
                 </button>
               </div>
               
-
             </motion.div>
           </AnimatePresence>
         </div>

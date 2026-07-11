@@ -2,14 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard, Code2, Trophy, Users, ArrowLeft,
+  LayoutDashboard, Code2, Trophy, Users, ArrowLeft, BookOpen,
   Plus, Pencil, Trash2, X, BarChart2, Save, AlertTriangle,
+  Search, Settings
 } from 'lucide-react';
-import { supabase } from '../services/supabaseService';
+import { supabase, supabaseDB } from '../services/supabaseService';
+import { firebaseDB } from '../services/firebaseService';
 import { useChallenges } from '../contexts/ChallengesContext';
 import type { Challenge, PracticeTrack } from '../contexts/ChallengesContext';
 
-type AdminTab = 'overview' | 'challenges' | 'contests' | 'users';
+type AdminTab = 'overview' | 'challenges' | 'tracks' | 'contests' | 'users';
 
 const DIFF_BADGE: Record<string, string> = {
   Easy: 'text-emerald-700 bg-emerald-50 border border-emerald-200',
@@ -176,7 +178,7 @@ function DeleteConfirm({ label, onConfirm, onCancel }: { label: string; onConfir
 // ── MAIN ADMIN COMPONENT ─────────────────────────────────────────
 export default function Admin() {
   const navigate = useNavigate();
-  const { tracks, challenges, addChallenge, updateChallenge, deleteChallenge } = useChallenges();
+  const { tracks, challenges, addChallenge, updateChallenge, deleteChallenge, addTrack, updateTrack, deleteTrack: contextDeleteTrack } = useChallenges();
   const [tab, setTab] = useState<AdminTab>('overview');
   const [stats, setStats] = useState<{ users: number; submissions: number } | null>(null);
   const [dbUsers, setDbUsers] = useState<any[]>([]);
@@ -190,6 +192,10 @@ export default function Admin() {
   const [contestModal, setContestModal] = useState<any | null>(null);
   const [deleteContestTarget, setDeleteContestTarget] = useState<any | null>(null);
 
+  // Track modal state
+  const [trackModal, setTrackModal] = useState<Partial<PracticeTrack> | null>(null);
+  const [deleteTrackTarget, setDeleteTrackTarget] = useState<PracticeTrack | null>(null);
+
   // Track filter for challenges tab
   const [filterTrack, setFilterTrack] = useState('all');
 
@@ -197,9 +203,9 @@ export default function Admin() {
   useEffect(() => {
     async function load() {
       try {
-        const [{ count: uc }, { count: sc }] = await Promise.all([
+        const [{ count: uc }, sc] = await Promise.all([
           supabase.from('users').select('*', { count: 'exact', head: true }),
-          supabase.from('solved_challenges').select('*', { count: 'exact', head: true }),
+          firebaseDB.getAllSubmissionsCount(),
         ]);
         setStats({ users: uc ?? 0, submissions: sc ?? 0 });
       } catch { setStats({ users: 0, submissions: 0 }); }
@@ -215,12 +221,23 @@ export default function Admin() {
   }, [tab]);
 
   // Load contests
-  const loadContests = () => {
-    const custom = JSON.parse(localStorage.getItem('glintspark_contests') || '[]');
-    const deleted = JSON.parse(localStorage.getItem('glintspark_deleted_hc') || '[]');
-    const visible = HARDCODED_CONTESTS.filter(c => !deleted.includes(c.id)).map(c => ({ ...c, source: 'hardcoded' }));
-    const customTagged = custom.map((c: any) => ({ ...c, source: 'custom' }));
-    setContests([...customTagged, ...visible]);
+  const loadContests = async () => {
+    try {
+      const dbContests = await supabaseDB.getContests();
+      const custom = JSON.parse(localStorage.getItem('glintspark_contests') || '[]');
+      const deleted = JSON.parse(localStorage.getItem('glintspark_deleted_hc') || '[]');
+      const visible = HARDCODED_CONTESTS.filter(c => !deleted.includes(c.id)).map(c => ({ ...c, source: 'hardcoded' }));
+      
+      const combinedCustom = [...dbContests, ...custom.filter((cc: any) => !dbContests.find((dc: any) => dc.id === cc.id))];
+      const customTagged = combinedCustom.map((c: any) => ({ ...c, source: 'custom' }));
+      setContests([...customTagged, ...visible]);
+    } catch {
+      const custom = JSON.parse(localStorage.getItem('glintspark_contests') || '[]');
+      const deleted = JSON.parse(localStorage.getItem('glintspark_deleted_hc') || '[]');
+      const visible = HARDCODED_CONTESTS.filter(c => !deleted.includes(c.id)).map(c => ({ ...c, source: 'hardcoded' }));
+      const customTagged = custom.map((c: any) => ({ ...c, source: 'custom' }));
+      setContests([...customTagged, ...visible]);
+    }
   };
 
   useEffect(() => { if (tab === 'contests') loadContests(); }, [tab]);
@@ -242,42 +259,86 @@ export default function Admin() {
   };
 
   // ── Contest handlers
-  const handleSaveContest = (form: any) => {
+  const handleSaveContest = async (form: any) => {
     if (form.source === 'hardcoded') {
-      // mark original as deleted, save as custom
       const del = JSON.parse(localStorage.getItem('glintspark_deleted_hc') || '[]');
       localStorage.setItem('glintspark_deleted_hc', JSON.stringify([...del, form.id]));
+      
+      const newCustom = { ...form, id: `custom-${Date.now()}`, source: 'custom' };
       const custom = JSON.parse(localStorage.getItem('glintspark_contests') || '[]');
-      localStorage.setItem('glintspark_contests', JSON.stringify([{ ...form, id: `custom-${Date.now()}`, source: 'custom' }, ...custom]));
+      localStorage.setItem('glintspark_contests', JSON.stringify([newCustom, ...custom]));
+      
+      try {
+        await supabaseDB.addContest({
+          id: newCustom.id,
+          title: newCustom.title,
+          date: newCustom.date,
+          prize: newCustom.prize,
+          participants: newCustom.participants,
+          type: newCustom.type,
+          source: 'custom'
+        });
+      } catch (err) {
+        console.error("Failed to add contest to Supabase:", err);
+      }
     } else {
       const custom = JSON.parse(localStorage.getItem('glintspark_contests') || '[]');
       localStorage.setItem('glintspark_contests', JSON.stringify(custom.map((c: any) => c.id === form.id ? form : c)));
+      
+      try {
+        await supabaseDB.updateContest(form.id, {
+          title: form.title,
+          date: form.date,
+          prize: form.prize,
+          participants: form.participants,
+          type: form.type
+        });
+      } catch (err) {
+        console.error("Failed to update contest in Supabase:", err);
+      }
     }
     setContestModal(null);
     loadContests();
   };
 
-  const handleDeleteContest = (c: any) => {
+  const handleDeleteContest = async (c: any) => {
     if (c.source === 'hardcoded') {
       const del = JSON.parse(localStorage.getItem('glintspark_deleted_hc') || '[]');
       localStorage.setItem('glintspark_deleted_hc', JSON.stringify([...del, c.id]));
     } else {
       const custom = JSON.parse(localStorage.getItem('glintspark_contests') || '[]');
       localStorage.setItem('glintspark_contests', JSON.stringify(custom.filter((sc: any) => sc.id !== c.id)));
+      
+      try {
+        await supabaseDB.deleteContest(c.id);
+      } catch (err) {
+        console.error("Failed to delete contest from Supabase:", err);
+      }
     }
     setDeleteContestTarget(null);
     loadContests();
   };
 
+  // ── Track handlers
+  const handleSaveTrack = (data: PracticeTrack) => {
+    if (tracks.find(t => t.id === data.id) && data.id === trackModal?.id) {
+      updateTrack(data.id, data);
+    } else if (!tracks.find(t => t.id === data.id)) {
+      addTrack(data);
+    }
+    setTrackModal(null);
+  };
+
   const SIDE_NAV = [
     { id: 'overview' as AdminTab, label: 'Overview', icon: <LayoutDashboard size={17} /> },
     { id: 'challenges' as AdminTab, label: 'Challenges', icon: <Code2 size={17} />, badge: challenges.length },
+    { id: 'tracks' as AdminTab, label: 'Practice Tracks', icon: <BookOpen size={17} />, badge: tracks.length },
     { id: 'contests' as AdminTab, label: 'Contests', icon: <Trophy size={17} /> },
     { id: 'users' as AdminTab, label: 'Users', icon: <Users size={17} /> },
   ];
 
   return (
-    <div className="flex h-[calc(100vh-68px)] bg-[#f3f7f7] font-sans overflow-hidden">
+    <div className="flex h-screen bg-[#f3f7f7] font-sans overflow-hidden">
 
       {/* ── SIDEBAR ─────────────────────────────────────── */}
       <aside className="w-56 bg-[#0e141e] flex flex-col shrink-0">
@@ -313,10 +374,11 @@ export default function Admin() {
         <div className="bg-white border-b border-slate-200 px-8 py-5 flex items-center justify-between shrink-0">
           <div>
             <h1 className="text-xl font-black text-slate-900">
-              {tab === 'overview' ? 'Dashboard Overview' : tab === 'challenges' ? 'Challenges' : tab === 'contests' ? 'Contests' : 'Users'}
+              {tab === 'overview' ? 'Dashboard Overview' : tab === 'challenges' ? 'Challenges' : tab === 'tracks' ? 'Practice Tracks' : tab === 'contests' ? 'Contests' : 'Users'}
             </h1>
             <p className="text-sm text-slate-400 mt-0.5">
               {tab === 'challenges' ? 'Changes apply live to the user-facing challenges page.' :
+               tab === 'tracks' ? 'Manage programming language tracks and categories.' :
                tab === 'contests' ? 'Manage upcoming and active contests.' :
                tab === 'users' ? 'View registered users and their stats.' : 'Platform metrics at a glance.'}
             </p>
@@ -326,6 +388,12 @@ export default function Admin() {
               <button onClick={() => setChallengeModal({})}
                 className="flex items-center gap-2 px-5 py-2.5 bg-brand-primary text-white font-bold text-[13px] rounded-lg hover:bg-brand-dark transition shadow-sm active:scale-95">
                 <Plus size={15} /> Add Challenge
+              </button>
+            )}
+            {tab === 'tracks' && (
+              <button onClick={() => setTrackModal({})}
+                className="flex items-center gap-2 px-5 py-2.5 bg-brand-primary text-white font-bold text-[13px] rounded-lg hover:bg-brand-dark transition shadow-sm active:scale-95">
+                <Plus size={15} /> Add Track
               </button>
             )}
             {tab === 'contests' && (
@@ -451,6 +519,26 @@ export default function Admin() {
             </div>
           )}
 
+          {/* ─── TRACKS ────────────────────────────────── */}
+          {tab === 'tracks' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {tracks.map(t => (
+                <div key={t.id} onClick={() => { setTab('challenges'); setFilterTrack(t.id); }} className="bg-white border border-slate-200 rounded-[20px] p-6 shadow-sm hover:shadow-md hover:border-brand-primary/30 transition-all relative group cursor-pointer">
+                  <div className="w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center p-2 mb-4 group-hover:scale-110 transition-transform">
+                    {t.icon ? <img src={t.icon} alt={t.name} className="w-full h-full object-contain" /> : <div className="text-xl font-black text-slate-300">{t.initials}</div>}
+                  </div>
+                  <h3 className="text-[17px] font-black text-slate-900 mb-1 group-hover:text-brand-primary transition-colors">{t.name}</h3>
+                  <p className="text-[13px] text-slate-500 font-medium line-clamp-2">{t.desc}</p>
+                  
+                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={(e) => { e.stopPropagation(); setTrackModal(t); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Pencil size={16} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); setDeleteTrackTarget(t); }} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* ─── CONTESTS ─────────────────────────────── */}
           {tab === 'contests' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -558,7 +646,85 @@ export default function Admin() {
             onCancel={() => setDeleteContestTarget(null)}
           />
         )}
+        {trackModal !== null && (
+          <TrackModal initial={trackModal} onSave={handleSaveTrack} onClose={() => setTrackModal(null)} />
+        )}
+        {deleteTrackTarget && (
+          <DeleteConfirm label={deleteTrackTarget.name} onConfirm={() => { contextDeleteTrack(deleteTrackTarget.id); setDeleteTrackTarget(null); }} onCancel={() => setDeleteTrackTarget(null)} />
+        )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+// ── TRACK MODAL ──────────────────────────────────────────────────
+function TrackModal({
+  initial, onSave, onClose
+}: {
+  initial: Partial<PracticeTrack>;
+  onSave: (data: PracticeTrack) => void;
+  onClose: () => void;
+}) {
+  const [form, setForm] = useState<Partial<PracticeTrack>>({
+    id: '', name: '', initials: '', desc: '', difficulty: 'Beginner to Advanced', icon: '', ...initial
+  });
+  const set = (k: keyof PracticeTrack, v: string) => setForm(p => ({ ...p, [k]: v }));
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0, scale: 0.96, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96, y: 20 }}
+        className="bg-[#f8fafc] rounded-[32px] shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200/80 flex flex-col max-h-[90vh]">
+        <div className="bg-white px-10 pt-8 pb-6 border-b border-slate-200/80 flex items-center justify-between shrink-0">
+          <div>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">{initial.id ? 'Edit Track' : 'New Practice Track'}</h2>
+            <p className="text-[14px] font-medium text-slate-500 mt-1">Add a new language or skill track to the practice syllabus.</p>
+          </div>
+          <button onClick={onClose} className="p-3 bg-slate-50 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-xl transition-colors"><X size={24} /></button>
+        </div>
+        <div className="p-10 space-y-6 overflow-y-auto">
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <label className="block text-[12px] font-black text-slate-400 uppercase tracking-widest mb-2">Track ID (URL Slug)</label>
+              <input value={form.id || ''} onChange={e => set('id', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} disabled={!!initial.id}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 text-[15px] font-bold focus:bg-white focus:outline-none focus:border-brand-primary disabled:opacity-50" placeholder="e.g. rust" />
+            </div>
+            <div>
+              <label className="block text-[12px] font-black text-slate-400 uppercase tracking-widest mb-2">Display Name</label>
+              <input value={form.name || ''} onChange={e => set('name', e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 text-[15px] font-bold focus:bg-white focus:outline-none focus:border-brand-primary" placeholder="e.g. Rust" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-6">
+            <div>
+              <label className="block text-[12px] font-black text-slate-400 uppercase tracking-widest mb-2">Initials (Badge)</label>
+              <input value={form.initials || ''} onChange={e => set('initials', e.target.value.toUpperCase().slice(0, 3))}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 text-[15px] font-bold focus:bg-white focus:outline-none focus:border-brand-primary" placeholder="e.g. RS" />
+            </div>
+            <div>
+              <label className="block text-[12px] font-black text-slate-400 uppercase tracking-widest mb-2">Difficulty Label</label>
+              <input value={form.difficulty || ''} onChange={e => set('difficulty', e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 text-[15px] font-bold focus:bg-white focus:outline-none focus:border-brand-primary" placeholder="e.g. Beginner to Advanced" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[12px] font-black text-slate-400 uppercase tracking-widest mb-2">Icon URL (SVG preferred)</label>
+            <input value={form.icon || ''} onChange={e => set('icon', e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 text-[15px] font-bold focus:bg-white focus:outline-none focus:border-brand-primary" placeholder="https://..." />
+          </div>
+          <div>
+            <label className="block text-[12px] font-black text-slate-400 uppercase tracking-widest mb-2">Short Description</label>
+            <textarea value={form.desc || ''} onChange={e => set('desc', e.target.value)} rows={3}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 text-[15px] font-medium focus:bg-white focus:outline-none focus:border-brand-primary" placeholder="Describe the track..." />
+          </div>
+        </div>
+        <div className="flex gap-4 px-10 py-6 border-t border-slate-100 bg-slate-50/50">
+          <button onClick={() => { if (form.id && form.name) onSave(form as PracticeTrack); }}
+            disabled={!form.id || !form.name}
+            className="w-full py-4 bg-brand-primary text-white font-bold text-[14px] rounded-xl hover:bg-brand-dark transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50">
+            <Save size={18} /> {initial.id ? 'Save Track' : 'Create Track'}
+          </button>
+        </div>
+      </motion.div>
     </div>
   );
 }

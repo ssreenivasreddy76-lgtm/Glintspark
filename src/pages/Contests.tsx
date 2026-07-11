@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { supabaseDB } from '../services/supabaseService';
 import { motion } from 'framer-motion';
 import {
   Trophy, Clock, Users, ArrowRight,
@@ -76,8 +77,22 @@ export default function Contests() {
   const [deletedHc, setDeletedHc] = useState<string[]>([]);
 
   useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem('glintspark_contests') || '[]');
-    setLocalContests(stored);
+    const fetchContests = async () => {
+      try {
+        const dbContests = await supabaseDB.getContests();
+        if (dbContests && dbContests.length > 0) {
+          setLocalContests(dbContests);
+        } else {
+          const stored = JSON.parse(localStorage.getItem('glintspark_contests') || '[]');
+          setLocalContests(stored);
+        }
+      } catch (err) {
+        console.error("Failed to load contests from Supabase:", err);
+        const stored = JSON.parse(localStorage.getItem('glintspark_contests') || '[]');
+        setLocalContests(stored);
+      }
+    };
+    fetchContests();
     const deleted = JSON.parse(localStorage.getItem('glintspark_deleted_hc') || '[]');
     setDeletedHc(deleted);
   }, []);
@@ -91,103 +106,62 @@ export default function Contests() {
       {/* ══════════════════════════════════════════════
           HERO
       ══════════════════════════════════════════════ */}
-      <div className="relative bg-[#0e141e] overflow-hidden">
-        {/* Grid texture */}
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.06)_1px,transparent_1px)] bg-[size:48px_48px]" />
-        {/* Glow */}
-        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-brand-primary/20 rounded-full blur-[120px] pointer-events-none" />
-
-        <div className="max-w-7xl mx-auto px-8 py-20 relative z-10">
-          <div className="flex flex-col lg:flex-row items-center gap-16">
-
-            {/* Left text */}
-            <div className="flex-1">
-              <motion.span
-                initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-                className="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-primary/10 border border-brand-primary/30 text-brand-primary text-[11px] font-bold uppercase tracking-widest rounded mb-6"
-              >
-                <Flame size={12} /> Competitive Arena
-              </motion.span>
-
-              <motion.h1
-                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
-                className="text-5xl md:text-6xl font-black text-white leading-[1.1] tracking-tight"
-              >
-                Scale the{' '}
-                <span className="text-brand-primary">Leaderboard.</span>
-              </motion.h1>
-
-              <motion.p
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.16 }}
-                className="text-slate-400 text-lg mt-6 leading-relaxed max-w-lg"
-              >
-                Compete in timed coding battles, climb global rankings, win Glintos, and get discovered by top hiring companies.
-              </motion.p>
-
-              <motion.div
-                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
-                className="flex flex-wrap gap-4 mt-10"
-              >
-                <button
-                  onClick={() => document.getElementById('upcoming')?.scrollIntoView({ behavior: 'smooth' })}
-                  className="px-8 py-3.5 bg-brand-primary text-white font-bold rounded text-sm hover:bg-brand-dark transition shadow-lg shadow-brand-primary/30 flex items-center gap-2 active:scale-95"
-                >
-                  Explore Contests <ArrowRight size={16} />
-                </button>
-                <Link to="/contests/create" className="px-8 py-3.5 bg-white/5 border border-white/10 text-white font-bold rounded text-sm hover:bg-white/10 transition flex items-center gap-2">
-                  Create Contest <Plus size={16} />
-                </Link>
-              </motion.div>
-            </div>
-
-            {/* Live Contest Card */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.12, type: 'spring', stiffness: 200 }}
-              className="w-full max-w-[360px] shrink-0"
-            >
-              <div className="bg-white rounded-2xl shadow-2xl shadow-black/30 p-8 relative overflow-hidden border border-white/10">
-                {/* Accent top bar */}
-                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-primary to-purple-500 rounded-t-2xl" />
-
-                <div className="flex items-start justify-between mb-6">
-                  <div className="w-12 h-12 bg-brand-primary/10 rounded-xl flex items-center justify-center border border-brand-primary/20">
-                    <Trophy className="text-brand-primary" size={22} />
-                  </div>
-                  <span className="flex items-center gap-1.5 text-[10px] font-bold bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full border border-emerald-200 uppercase tracking-wider animate-pulse">
-                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block" />
-                    Live Now
-                  </span>
-                </div>
-
-                <h3 className="text-xl font-black text-slate-900">Weekly Contest 412</h3>
-                <p className="text-xs text-slate-400 mt-1">Time-bound • 4 Problems • Rated</p>
-
-                <div className="flex items-stretch gap-6 mt-8 mb-8 p-5 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="flex-1">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Ends In</div>
-                    <div className="text-2xl font-black text-slate-900 font-mono tabular-nums tracking-tight">{countdown}</div>
-                  </div>
-                  <div className="w-px bg-slate-200" />
-                  <div className="flex-1">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Participants</div>
-                    <div className="text-2xl font-black text-brand-primary">12,402</div>
-                  </div>
-                </div>
-
-                <Link
-                  to="/challenges/solve-me-first"
-                  className="w-full py-3.5 bg-brand-primary text-white font-black text-sm rounded hover:bg-brand-dark transition flex items-center justify-center gap-2 shadow-lg shadow-brand-primary/20 active:scale-95"
-                >
-                  Join Now <ArrowRight size={16} />
-                </Link>
-              </div>
-            </motion.div>
-
-          </div>
+      <div className="relative bg-slate-900 overflow-hidden border-b border-slate-200 min-h-[500px] flex items-center">
+        {/* Full Screen Background Image */}
+        <div className="absolute inset-0">
+          <img 
+            src="/assets/contest_normal_photo.png" 
+            alt="Coding Contest" 
+            className="w-full h-full object-cover"
+          />
+          {/* Overlay to ensure text readability */}
+          <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-[2px]" />
         </div>
 
+        <div className="max-w-7xl mx-auto px-8 py-24 relative z-10 w-full">
+          <div className="max-w-3xl">
+            <motion.span
+              initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-primary/20 border border-brand-primary/30 text-brand-primary text-[11px] font-bold uppercase tracking-widest rounded mb-6 backdrop-blur-md"
+            >
+              <Flame size={12} /> Competitive Arena
+            </motion.span>
+
+            <motion.h1
+              initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+              className="text-5xl md:text-7xl font-black text-white leading-[1.1] tracking-tight"
+            >
+              Scale the{' '}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-primary to-blue-400">Leaderboard.</span>
+            </motion.h1>
+
+            <motion.p
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.16 }}
+              className="text-slate-200 text-lg md:text-xl mt-6 leading-relaxed max-w-xl"
+            >
+              Compete in timed coding battles, climb global rankings, win Glintos, and get discovered by top hiring companies.
+            </motion.p>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
+              className="flex flex-wrap gap-4 mt-10"
+            >
+              <button
+                onClick={() => document.getElementById('upcoming')?.scrollIntoView({ behavior: 'smooth' })}
+                className="px-8 py-3.5 bg-brand-primary text-white font-bold rounded text-sm hover:bg-brand-dark transition shadow-lg shadow-brand-primary/30 flex items-center gap-2 active:scale-95 uppercase tracking-widest"
+              >
+                Explore Contests <ArrowRight size={16} />
+              </button>
+              <Link to="/contests/create" className="px-8 py-3.5 bg-white/10 border border-white/20 text-white font-bold rounded text-sm hover:bg-white/20 transition flex items-center gap-2 backdrop-blur-md uppercase tracking-widest">
+                Create Contest <Plus size={16} />
+              </Link>
+            </motion.div>
+          </div>
+        </div>
+      </div>
+
         {/* Stats bar */}
-        <div className="border-t border-white/5 bg-white/[0.03]">
+        <div className="border-t border-slate-100 bg-slate-50">
           <div className="max-w-7xl mx-auto px-8 py-5 grid grid-cols-2 md:grid-cols-4 gap-6">
             {stats.map(({ label, value, icon: Icon }) => (
               <div key={label} className="flex items-center gap-3">
@@ -195,64 +169,68 @@ export default function Contests() {
                   <Icon size={16} className="text-brand-primary" />
                 </div>
                 <div>
-                  <div className="text-white font-black text-lg leading-none">{value}</div>
+                  <div className="text-slate-900 font-black text-lg leading-none">{value}</div>
                   <div className="text-slate-500 text-[11px] mt-0.5">{label}</div>
                 </div>
               </div>
             ))}
           </div>
         </div>
-      </div>
 
       {/* ══════════════════════════════════════════════
           UPCOMING EVENTS
       ══════════════════════════════════════════════ */}
-      <div id="upcoming" className="max-w-7xl mx-auto px-8 py-16">
+      <div id="upcoming" className="max-w-7xl mx-auto px-8 py-16 relative">
+        {/* Floating 3D Trophy Background */}
+        <motion.img 
+          src="/assets/3d_trophy_light.png" 
+          alt="Trophy" 
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] object-contain opacity-20 mix-blend-multiply pointer-events-none z-0"
+          animate={{ rotate: [0, 10, -10, 0] }}
+          transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
+        />
 
-        <div className="flex items-center justify-between mb-10">
+        <div className="flex items-center justify-between mb-10 relative z-10">
           <div className="flex items-center gap-3">
             <Calendar className="text-brand-primary" size={20} />
             <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">Upcoming Events</h2>
           </div>
-          <button className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-brand-primary uppercase tracking-widest transition">
-            <Filter size={14} /> Filter
-          </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 relative z-10">
           {allContests.map((contest, i) => (
             <motion.div
               key={contest.id}
-              initial={{ opacity: 0, y: 16 }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.07, type: 'spring', stiffness: 220, damping: 22 }}
-              whileHover={{ y: -4, boxShadow: '0 12px 32px rgba(0,0,0,0.09)' }}
-              className="bg-white border border-slate-200 rounded-2xl p-7 flex flex-col justify-between group transition-all duration-300"
+              transition={{ delay: i * 0.05, duration: 0.4 }}
+              whileHover={{ y: -6, boxShadow: '0 20px 40px rgba(99,102,241,0.15)' }}
+              className="relative p-[1px] rounded-[24px] bg-gradient-to-b from-slate-200 to-slate-100 hover:from-brand-primary hover:to-purple-500 transition-all duration-500 group"
             >
+              <div className="bg-white/95 backdrop-blur-xl rounded-[23px] p-7 h-full flex flex-col justify-between transition-all duration-500 relative overflow-hidden">
+                <div className="absolute -top-20 -right-20 w-48 h-48 bg-gradient-to-br from-brand-primary/5 to-purple-500/5 blur-3xl rounded-full group-hover:from-brand-primary/20 group-hover:to-purple-500/20 transition-all duration-500"></div>
+
               {/* Card top */}
-              <div>
-                <div className="flex items-center justify-between mb-5">
-                  <span className={`text-[10px] font-black px-2.5 py-1 rounded uppercase tracking-widest border ${typeStyles[contest.type]}`}>
-                    {contest.type}
-                  </span>
-                  <Users size={15} className="text-slate-300" />
+              <div className="relative z-10">
+                <div className="flex items-center justify-end mb-5">
+                  <Users size={15} className="text-slate-400 group-hover:text-brand-primary transition-colors duration-500" />
                 </div>
 
-                <h3 className="text-[17px] font-black text-slate-900 group-hover:text-brand-primary transition-colors leading-tight mb-5">
+                <h3 className="text-2xl font-black text-slate-900 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-brand-primary group-hover:to-purple-600 transition-all duration-500 leading-tight mb-5">
                   {contest.title}
                 </h3>
 
                 <div className="space-y-2.5">
-                  <div className="flex items-center gap-2.5 text-[13px] text-slate-500 font-medium">
-                    <Clock size={14} className="text-slate-300 shrink-0" />
+                  <div className="flex items-center gap-2.5 text-[13px] text-slate-500 font-bold">
+                    <Clock size={14} className="text-slate-400 group-hover:text-brand-primary transition-colors duration-500 shrink-0" />
                     {contest.date}
                   </div>
-                  <div className="flex items-center gap-2.5 text-[13px] text-slate-500 font-medium">
-                    <Trophy size={14} className="text-slate-300 shrink-0" />
-                    Prize: <span className="font-bold text-slate-700">{contest.prize}</span>
+                  <div className="flex items-center gap-2.5 text-[13px] text-slate-500 font-bold">
+                    <Trophy size={14} className="text-slate-400 group-hover:text-brand-primary transition-colors duration-500 shrink-0" />
+                    Prize: <span className="font-black text-slate-700 group-hover:text-brand-primary transition-colors duration-500">{contest.prize}</span>
                   </div>
-                  <div className="flex items-center gap-2.5 text-[13px] text-slate-500 font-medium">
-                    <Users size={14} className="text-slate-300 shrink-0" />
+                  <div className="flex items-center gap-2.5 text-[13px] text-slate-500 font-bold">
+                    <Users size={14} className="text-slate-400 group-hover:text-brand-primary transition-colors duration-500 shrink-0" />
                     {contest.participants} registered
                   </div>
                 </div>
@@ -261,10 +239,11 @@ export default function Contests() {
               {/* CTA */}
               <Link 
                 to={`/contests/${contest.id}`}
-                className="mt-7 w-full py-2.5 bg-brand-primary text-white text-[11px] font-black uppercase tracking-widest rounded hover:bg-brand-dark transition-all active:scale-95 flex items-center justify-center gap-1.5 shadow-sm"
+                className="mt-7 relative z-10 w-full py-3.5 bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-gradient-to-r hover:from-brand-primary hover:to-purple-600 transition-all duration-300 active:scale-95 flex items-center justify-center gap-1.5 shadow-md hover:shadow-xl hover:shadow-brand-primary/25 group/btn"
               >
-                Start Contest <ChevronRight size={13} />
+                Start Contest <ChevronRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
               </Link>
+              </div>
             </motion.div>
           ))}
         </div>
