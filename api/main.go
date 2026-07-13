@@ -17,6 +17,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+
+	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4/auth"
+	"google.golang.org/api/option"
 )
 
 // ─── Environment Loading ───────────────────────────────────────────
@@ -54,6 +58,33 @@ func loadEnv() {
 
 // ─── Redis Initialization ──────────────────────────────────────────
 var rdb *redis.Client
+
+var firebaseAuth *auth.Client
+
+func initFirebase() {
+	opt := option.WithCredentialsJSON([]byte(os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON")))
+	// If the environment variable isn't set (e.g., they didn't provide a service account),
+	// we will try to initialize with default Application Default Credentials (ADC).
+	var app *firebase.App
+	var err error
+	if os.Getenv("FIREBASE_SERVICE_ACCOUNT_JSON") != "" {
+		app, err = firebase.NewApp(context.Background(), nil, opt)
+	} else {
+		app, err = firebase.NewApp(context.Background(), nil)
+	}
+	
+	if err != nil {
+		log.Printf("⚠️ Firebase Admin SDK initialization failed: %v. Custom tokens will not work.", err)
+		return
+	}
+
+	firebaseAuth, err = app.Auth(context.Background())
+	if err != nil {
+		log.Printf("⚠️ Firebase Auth initialization failed: %v", err)
+	} else {
+		log.Println("🔥 Firebase Admin SDK initialized successfully.")
+	}
+}
 
 func initRedis() {
 	redisUrl := os.Getenv("REDIS_URL")
@@ -635,6 +666,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 func main() {
 	loadEnv()
 	initRedis()
+	initFirebase()
 
 	var db DBClient
 	dbUrl := os.Getenv("DATABASE_URL")
@@ -662,6 +694,35 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+
+	// Firebase Custom Token Endpoint
+	mux.HandleFunc("/api/firebase-token", func(w http.ResponseWriter, r *http.Request) {
+		authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != "GET" {
+				http.Error(w, `{"error": "Method not allowed"}`, http.StatusMethodNotAllowed)
+				return
+			}
+			
+			if firebaseAuth == nil {
+				http.Error(w, `{"error": "Firebase Admin SDK not configured on server"}`, http.StatusInternalServerError)
+				return
+			}
+
+			userID := r.Context().Value("userID").(string)
+			
+			token, err := firebaseAuth.CustomToken(r.Context(), userID)
+			if err != nil {
+				log.Printf("Error creating custom token for user %s: %v", userID, err)
+				http.Error(w, `{"error": "Failed to create custom token"}`, http.StatusInternalServerError)
+				return
+			}
+			
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"token": token,
+			})
+		})(w, r)
+	})
 
 	// 1. Health Route
 	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
@@ -982,6 +1043,11 @@ func main() {
 
 	corsHandler := corsMiddleware(mux)
 
-	log.Println("🚀 Go Backend Secure Proxy is starting on http://127.0.0.1:8080...")
-	log.Fatal(http.ListenAndServe("127.0.0.1:8080", corsHandler))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("🚀 Go Backend Secure Proxy is starting on port %s...", port)
+	log.Fatal(http.ListenAndServe("0.0.0.0:"+port, corsHandler))
 }
