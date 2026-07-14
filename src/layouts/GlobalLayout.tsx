@@ -27,6 +27,8 @@ export default function GlobalLayout() {
   useEffect(() => {
     if (!loading && !user && isAppPage && !isGuest) {
       navigate('/auth', { state: { from: location.pathname + location.search + location.hash } });
+    } else if (!loading && user && location.pathname === '/') {
+      navigate('/dashboard');
     }
   }, [user, loading, isAppPage, isGuest, location.pathname, location.search, location.hash, navigate]);
 
