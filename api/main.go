@@ -1011,10 +1011,10 @@ func main() {
 				}
 			}
 
-			// Forward the execution request to the self-hosted Piston server
+			// Forward the execution request to the Piston server
 			pistonURL := os.Getenv("PISTON_API_URL")
 			if pistonURL == "" {
-				pistonURL = "http://localhost:2000/api/v2/execute"
+				pistonURL = "https://emkc.org/api/v2/piston/execute"
 			}
 
 			// The frontend already sends the exact JSON structure Piston expects:
