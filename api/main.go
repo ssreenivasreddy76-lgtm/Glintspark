@@ -1014,7 +1014,7 @@ func main() {
 			// Forward the execution request to the Piston server
 			pistonURL := os.Getenv("PISTON_API_URL")
 			if pistonURL == "" {
-				pistonURL = "https://emkc.org/api/v2/piston/execute"
+				pistonURL = "https://piston-2i5z.onrender.com/api/v2/execute"
 			}
 
 			// The frontend already sends the exact JSON structure Piston expects:
