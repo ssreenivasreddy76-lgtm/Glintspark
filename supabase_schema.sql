@@ -1,102 +1,173 @@
--- Supabase SQL Schema for Glintspark
--- Paste this entirely into the Supabase SQL Editor and run it!
+-- ==========================================
+-- GLINTSPARK MASTER SUPABASE SCHEMA
+-- ==========================================
 
--- 1. Users Table (extends Supabase Auth)
-CREATE TABLE IF NOT EXISTS public.users (
-  id uuid REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
-  email text UNIQUE NOT NULL,
+-- 0. CLEAN SLATE (Delete existing tables to avoid conflicts)
+DROP TABLE IF EXISTS public.submissions CASCADE;
+DROP TABLE IF EXISTS public.hidden_test_cases CASCADE;
+DROP TABLE IF EXISTS public.sample_test_cases CASCADE;
+DROP TABLE IF EXISTS public.problem_languages CASCADE;
+DROP TABLE IF EXISTS public.problems CASCADE;
+DROP TABLE IF EXISTS public.contests CASCADE;
+DROP TABLE IF EXISTS public.practice_tracks CASCADE;
+DROP TABLE IF EXISTS public.users CASCADE;
+
+
+-- 1. Users Table (Core Auth & Profile)
+CREATE TABLE public.users (
+  id uuid NOT NULL,
+  email text NOT NULL UNIQUE,
   name text,
   first_name text,
   last_name text,
   avatar text,
+  country text,
   xp integer DEFAULT 0,
   streak integer DEFAULT 0,
   onboarding_completed boolean DEFAULT false,
   lessons_completed integer DEFAULT 0,
   completed_lesson_ids text[] DEFAULT '{}',
   unlocked_lesson_ids text[] DEFAULT '{c1}',
-  activity_log jsonb DEFAULT '[]',
-  activity_history jsonb DEFAULT '[]',
+  activity_log jsonb DEFAULT '[]'::jsonb,
+  activity_history jsonb DEFAULT '[]'::jsonb,
   last_active_at timestamp with time zone,
-  created_at timestamp with time zone DEFAULT now()
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT users_pkey PRIMARY KEY (id)
+  -- Note: If you are using Supabase Auth, you usually link this to auth.users
+  -- CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );
 
--- 2. Practice Tracks
-CREATE TABLE IF NOT EXISTS public.practice_tracks (
-  id text PRIMARY KEY,
+-- 2. Practice Tracks Table (e.g. JavaScript, C++, Python)
+CREATE TABLE public.practice_tracks (
+  id text NOT NULL,
   name text NOT NULL,
   initials text NOT NULL,
   "desc" text,
   difficulty text,
   icon text,
-  created_at timestamp with time zone DEFAULT now()
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT practice_tracks_pkey PRIMARY KEY (id)
 );
 
--- 5. Contests
-CREATE TABLE IF NOT EXISTS public.contests (
-  id text PRIMARY KEY,
+-- 3. Contests Table
+CREATE TABLE public.contests (
+  id text NOT NULL,
   title text NOT NULL,
   date text NOT NULL,
   prize text,
   participants text,
   type text,
-  source text DEFAULT 'custom',
-  created_at timestamp with time zone DEFAULT now()
+  source text DEFAULT 'custom'::text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT contests_pkey PRIMARY KEY (id)
+);
+
+-- 4. Problems Table (Coding Challenges)
+CREATE TABLE public.problems (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    difficulty TEXT NOT NULL,
+    category TEXT,
+    tags TEXT[] DEFAULT '{}',
+    description TEXT,
+    input_format TEXT,
+    output_format TEXT,
+    constraints TEXT,
+    is_practice BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 5. Problem Languages Table (Time limits & Memory limits per language)
+CREATE TABLE public.problem_languages (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    problem_id TEXT REFERENCES public.problems(id) ON DELETE CASCADE,
+    language_id TEXT NOT NULL,
+    time_limit_seconds DECIMAL(5,2) DEFAULT 2.00,
+    memory_limit_mb INTEGER DEFAULT 256,
+    score INTEGER DEFAULT 10,
+    UNIQUE(problem_id, language_id)
+);
+
+-- 6. Sample Test Cases (Publicly visible to users)
+CREATE TABLE public.sample_test_cases (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    problem_id TEXT REFERENCES public.problems(id) ON DELETE CASCADE,
+    input_data TEXT NOT NULL,
+    output_data TEXT NOT NULL,
+    explanation TEXT
+);
+
+-- 7. Hidden Test Cases (Private - Sent to Google Cloud Run for grading)
+CREATE TABLE public.hidden_test_cases (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    problem_id TEXT REFERENCES public.problems(id) ON DELETE CASCADE,
+    input_data TEXT NOT NULL,
+    expected_output TEXT NOT NULL,
+    is_hidden BOOLEAN DEFAULT true
+);
+
+-- 8. User Submissions Table (Tracks user attempts and success rates)
+CREATE TABLE public.submissions (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+    problem_id TEXT REFERENCES public.problems(id) ON DELETE CASCADE,
+    language_id TEXT NOT NULL,
+    code TEXT NOT NULL,
+    status TEXT NOT NULL, -- e.g., 'Accepted', 'Wrong Answer', 'Time Limit Exceeded'
+    execution_time_ms INTEGER,
+    memory_used_kb INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- ==========================================
--- ROW LEVEL SECURITY (RLS) POLICIES
+-- ROW LEVEL SECURITY (RLS)
 -- ==========================================
+-- Supabase is strictly enforcing RLS, so we explicitly create open policies 
+-- to allow the Admin panel to insert data during the prototyping phase.
 
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.practice_tracks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.contests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.problems ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.problem_languages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sample_test_cases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hidden_test_cases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.submissions ENABLE ROW LEVEL SECURITY;
 
--- Allow anyone to read tracks and contests
-CREATE POLICY "Public profiles are viewable by everyone." ON public.users FOR SELECT USING (true);
-CREATE POLICY "Tracks are viewable by everyone." ON public.practice_tracks FOR SELECT USING (true);
-CREATE POLICY "Contests are viewable by everyone." ON public.contests FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow all" ON public.users;
+CREATE POLICY "Allow all" ON public.users FOR ALL USING (true) WITH CHECK (true);
 
--- Allow admins (for now, anyone since we haven't defined roles) to insert/update tracks and contests
-CREATE POLICY "Anyone can modify tracks (dev mode)" ON public.practice_tracks FOR ALL USING (true);
-CREATE POLICY "Anyone can modify contests (dev mode)" ON public.contests FOR ALL USING (true);
+DROP POLICY IF EXISTS "Allow all" ON public.practice_tracks;
+CREATE POLICY "Allow all" ON public.practice_tracks FOR ALL USING (true) WITH CHECK (true);
 
--- Users can only modify their own profile data
-CREATE POLICY "Users can insert their own profile." ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "Users can update own profile." ON public.users FOR UPDATE USING (auth.uid() = id);
+DROP POLICY IF EXISTS "Allow all" ON public.contests;
+CREATE POLICY "Allow all" ON public.contests FOR ALL USING (true) WITH CHECK (true);
 
--- ==========================================
--- SEED DATA (Optional but recommended)
--- ==========================================
+DROP POLICY IF EXISTS "Allow all" ON public.problems;
+CREATE POLICY "Allow all" ON public.problems FOR ALL USING (true) WITH CHECK (true);
 
-INSERT INTO public.practice_tracks (id, name, initials, "desc", difficulty, icon) VALUES
-('c', 'C', 'C', 'Master low-level system programming.', 'Beginner to Advanced', 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/c/c-original.svg'),
-('sql', 'SQL', 'SQL', 'Learn relational database design and queries.', 'Beginner to Advanced', 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/mysql/mysql-original.svg'),
-('javascript', 'JavaScript', 'JS', 'Master prototype closures, and async JS.', 'Beginner to Advanced', 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/javascript/javascript-original.svg'),
-('java', 'Java', 'J', 'Excel in OOP and robust threading models.', 'Beginner to Advanced', 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/java/java-original.svg'),
-('python', 'Python', 'PY', 'Acquire pythonic elegance and scripting.', 'Beginner to Advanced', 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg'),
-('data-structures', 'Data Structures & Algos', 'DS', 'Design highly efficient algorithms.', 'Beginner to Advanced', 'https://img.icons8.com/color/96/data-configuration.png')
-ON CONFLICT (id) DO NOTHING;
+DROP POLICY IF EXISTS "Allow all" ON public.problem_languages;
+CREATE POLICY "Allow all" ON public.problem_languages FOR ALL USING (true) WITH CHECK (true);
 
--- Trigger to automatically create a public.users row when a user signs up
-CREATE OR REPLACE FUNCTION public.handle_new_user() 
-RETURNS trigger AS $$
-BEGIN
-  INSERT INTO public.users (id, email, name, first_name, last_name, avatar)
-  VALUES (
-    new.id,
-    new.email,
-    new.raw_user_meta_data->>'full_name',
-    new.raw_user_meta_data->>'first_name',
-    new.raw_user_meta_data->>'last_name',
-    new.raw_user_meta_data->>'avatar_url'
-  );
-  RETURN new;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+DROP POLICY IF EXISTS "Allow all" ON public.sample_test_cases;
+CREATE POLICY "Allow all" ON public.sample_test_cases FOR ALL USING (true) WITH CHECK (true);
 
--- Drop trigger if exists so we can recreate it easily
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+DROP POLICY IF EXISTS "Allow all" ON public.hidden_test_cases;
+CREATE POLICY "Allow all" ON public.hidden_test_cases FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all" ON public.submissions;
+CREATE POLICY "Allow all" ON public.submissions FOR ALL USING (true) WITH CHECK (true);
+
+-- 9. Solved Challenges Table (Used for tracking user progress on challenges)
+CREATE TABLE IF NOT EXISTS public.solved_challenges (
+    submission_id TEXT PRIMARY KEY,
+    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+    challenge_id TEXT NOT NULL,
+    language TEXT NOT NULL,
+    status TEXT NOT NULL,
+    code TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+ALTER TABLE public.solved_challenges ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all" ON public.solved_challenges;
+CREATE POLICY "Allow all" ON public.solved_challenges FOR ALL USING (true) WITH CHECK (true);

@@ -4,14 +4,19 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, Code2, Trophy, Users, ArrowLeft, BookOpen,
   Plus, Pencil, Trash2, X, BarChart2, Save, AlertTriangle,
-  Search, Settings
+  Search, Settings, HelpCircle, Book, Building, Video
 } from 'lucide-react';
 import { supabase, supabaseDB } from '../services/supabaseService';
 import { firebaseDB } from '../services/firebaseService';
 import { useChallenges } from '../contexts/ChallengesContext';
 import type { Challenge, PracticeTrack } from '../contexts/ChallengesContext';
+import { AdminQuizzes } from '../components/AdminQuizzes';
+import { AdminPracticeQuestions } from '../components/AdminPracticeQuestions';
+import { AdminLearn } from '../components/AdminLearn';
+import { AdminMockInterviews } from '../components/AdminMockInterviews';
+import { AdminCompanyPermissions } from '../components/AdminCompanyPermissions';
 
-type AdminTab = 'overview' | 'challenges' | 'tracks' | 'contests' | 'users';
+type AdminTab = 'overview' | 'challenges' | 'practice_questions' | 'contests' | 'users' | 'quizzes' | 'learn' | 'companies' | 'mock_interviews';
 
 const DIFF_BADGE: Record<string, string> = {
   Easy: 'text-emerald-700 bg-emerald-50 border border-emerald-200',
@@ -29,7 +34,11 @@ const HARDCODED_CONTESTS = [
 ];
 
 const emptyChallenge = (): Omit<Challenge, 'id'> => ({
-  title: '', difficulty: 'Easy', category: '', points: 10, successRate: '80.0%', track: 'javascript', description: '',
+  title: '', difficulty: 'Easy', category: '', points: 10, successRate: '100%', track: 'c', tracks: ['c'], description: '',
+  timeLimit: 2.0, memoryLimit: 256, inputFormat: '', outputFormat: '', constraints: '',
+  sampleInput1: '', sampleOutput1: '', explanation1: '',
+  sampleInput2: '', sampleOutput2: '', explanation2: '', hiddenTestCasesList: [{input: '', output: ''}],
+  isPractice: true
 });
 
 // ── MODAL ───────────────────────────────────────────────────────
@@ -44,71 +53,184 @@ function ChallengeModal({
   const [form, setForm] = useState({ ...emptyChallenge(), ...initial });
   const set = (k: keyof typeof form, v: any) => setForm(p => ({ ...p, [k]: v }));
 
+  const inputClass = "w-full border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition bg-white";
+  const labelClass = "block text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 mt-4";
+
+  const handleDifficultyChange = (d: string) => {
+    let pts = 10;
+    if (d === 'Medium') pts = 15;
+    if (d === 'Hard') pts = 30;
+    setForm(p => ({ ...p, difficulty: d as any, points: pts }));
+  };
+
+  const toggleTrack = (id: string) => {
+    setForm(p => {
+      const current = p.tracks || [];
+      if (current.includes(id)) {
+        return { ...p, tracks: current.filter(t => t !== id) };
+      }
+      return { ...p, tracks: [...current, id] };
+    });
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 sm:p-6 overflow-y-auto">
       <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-        <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100">
-          <h2 className="text-lg font-black text-slate-900">{initial.id ? 'Edit Challenge' : 'Add New Challenge'}</h2>
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col my-auto" style={{ maxHeight: 'calc(100vh - 3rem)' }}>
+        
+        {/* Header */}
+        <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100 shrink-0">
+          <h2 className="text-xl font-black text-slate-900">{initial.id ? 'Edit Challenge' : 'Add New Challenge'}</h2>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition"><X size={18} /></button>
         </div>
-        <div className="px-8 py-6 space-y-4">
-          <div>
-            <label className="block text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Title</label>
-            <input value={form.title} onChange={e => set('title', e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition"
-              placeholder="Challenge title" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
+
+        {/* Scrollable Form Body */}
+        <div className="px-8 py-6 overflow-y-auto space-y-6">
+          
+          <div className="grid grid-cols-2 gap-8">
+            {/* Left Column */}
             <div>
-              <label className="block text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Track</label>
-              <select value={form.track} onChange={e => set('track', e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] focus:outline-none focus:border-brand-primary transition bg-white">
-                {tracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+              <div className="flex items-center justify-between border-b pb-2 mb-4">
+                <h3 className="font-bold text-slate-800 text-lg">Basic Details</h3>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={form.isPractice !== false} onChange={e => set('isPractice', e.target.checked)} className="w-4 h-4 text-brand-primary rounded border-slate-300" />
+                  <span className="text-[13px] font-bold text-slate-600">Show in Practice Tab</span>
+                </label>
+              </div>
+              
+              <label className={labelClass} style={{marginTop: 0}}>Title</label>
+              <input value={form.title} onChange={e => set('title', e.target.value)} className={inputClass} placeholder="e.g. Two Sum" />
+
+              <label className={labelClass}>Languages Available</label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {tracks.map(t => {
+                   const isSelected = (form.tracks || []).includes(t.id);
+                   return (
+                     <button key={t.id} onClick={() => toggleTrack(t.id)} className={`px-3 py-1.5 rounded-md text-[13px] font-bold border transition ${isSelected ? 'bg-brand-primary border-brand-primary text-white' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
+                       {t.name}
+                     </button>
+                   )
+                })}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Difficulty</label>
+                  <select value={form.difficulty} onChange={e => handleDifficultyChange(e.target.value)} className={inputClass}>
+                    {['Easy', 'Medium', 'Hard'].map(d => <option key={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Points / Score</label>
+                  <input type="number" value={form.points} onChange={e => set('points', Number(e.target.value))} className={inputClass} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Topic (Category)</label>
+                  <input value={form.category} onChange={e => set('category', e.target.value)} className={inputClass} placeholder="e.g. Arrays" />
+                </div>
+                <div>
+                  <label className={labelClass}>Time Limit (s)</label>
+                  <input type="number" step="0.5" value={form.timeLimit} onChange={e => set('timeLimit', Number(e.target.value))} className={inputClass} />
+                </div>
+              </div>
+
+              <div className="mt-6 border border-slate-200 rounded-lg overflow-hidden">
+                <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
+                  <h4 className="font-bold text-slate-700 text-[13px] uppercase tracking-wider">
+                    Hidden Test Cases <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full text-[10px] ml-1">{(form.hiddenTestCasesList || []).length}</span>
+                  </h4>
+                  <button onClick={() => set('hiddenTestCasesList', [...(form.hiddenTestCasesList || []), {input: '', output: ''}])} className="text-brand-primary font-bold text-[12px] hover:underline">+ Add Case</button>
+                </div>
+                <div className="p-4 space-y-4 max-h-64 overflow-y-auto">
+                  {(form.hiddenTestCasesList || []).map((tc, idx) => (
+                    <div key={idx} className="flex gap-2 items-start border-b border-slate-100 pb-4 last:border-0 last:pb-0">
+                      <div className="w-8 shrink-0 flex items-center justify-center pt-2">
+                        <span className="font-bold text-slate-400 text-xs">{idx + 1}.</span>
+                      </div>
+                      <div className="flex-1">
+                        <textarea value={tc.input} onChange={e => {
+                          const newList = [...(form.hiddenTestCasesList || [])];
+                          newList[idx].input = e.target.value;
+                          set('hiddenTestCasesList', newList);
+                        }} rows={2} className={`${inputClass} font-mono text-xs`} placeholder="Input" />
+                      </div>
+                      <div className="flex-1">
+                        <textarea value={tc.output} onChange={e => {
+                          const newList = [...(form.hiddenTestCasesList || [])];
+                          newList[idx].output = e.target.value;
+                          set('hiddenTestCasesList', newList);
+                        }} rows={2} className={`${inputClass} font-mono text-xs`} placeholder="Expected Output" />
+                      </div>
+                      <button onClick={() => {
+                        const newList = [...(form.hiddenTestCasesList || [])];
+                        newList.splice(idx, 1);
+                        set('hiddenTestCasesList', newList);
+                      }} className="text-rose-500 p-2 mt-1 hover:bg-rose-50 rounded"><X size={16}/></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
             </div>
+
+            {/* Right Column */}
             <div>
-              <label className="block text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Difficulty</label>
-              <select value={form.difficulty} onChange={e => set('difficulty', e.target.value as any)}
-                className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] focus:outline-none focus:border-brand-primary transition bg-white">
-                {['Easy', 'Medium', 'Hard'].map(d => <option key={d}>{d}</option>)}
-              </select>
+              <h3 className="font-bold text-slate-800 text-lg border-b pb-2 mb-4">Problem Statement</h3>
+              
+              <label className={labelClass} style={{marginTop: 0}}>Description</label>
+              <textarea value={form.description || ''} onChange={e => set('description', e.target.value)} rows={4} className={inputClass} placeholder="Given an array of integers..." />
+
+              <label className={labelClass}>Input Format</label>
+              <textarea value={form.inputFormat || ''} onChange={e => set('inputFormat', e.target.value)} rows={2} className={inputClass} placeholder="First line contains N..." />
+
+              <label className={labelClass}>Output Format</label>
+              <textarea value={form.outputFormat || ''} onChange={e => set('outputFormat', e.target.value)} rows={2} className={inputClass} placeholder="Print the result..." />
+
+              <label className={labelClass}>Constraints</label>
+              <textarea value={form.constraints || ''} onChange={e => set('constraints', e.target.value)} rows={2} className={inputClass} placeholder="1 <= N <= 100000" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+
+          <div className="grid grid-cols-2 gap-8 pt-6 border-t border-slate-100">
             <div>
-              <label className="block text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Category</label>
-              <input value={form.category} onChange={e => set('category', e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] focus:outline-none focus:border-brand-primary transition"
-                placeholder="e.g. Arrays" />
+              <h3 className="font-bold text-slate-800 text-lg border-b pb-2 mb-4">Sample Test Case 1</h3>
+              <label className={labelClass} style={{marginTop: 0}}>Sample Input 1</label>
+              <textarea value={form.sampleInput1 || ''} onChange={e => set('sampleInput1', e.target.value)} rows={2} className={`${inputClass} font-mono`} />
+              
+              <label className={labelClass}>Sample Output 1</label>
+              <textarea value={form.sampleOutput1 || ''} onChange={e => set('sampleOutput1', e.target.value)} rows={2} className={`${inputClass} font-mono`} />
+
+              <label className={labelClass}>Explanation 1</label>
+              <input value={form.explanation1 || ''} onChange={e => set('explanation1', e.target.value)} className={inputClass} />
             </div>
+
             <div>
-              <label className="block text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Points</label>
-              <input type="number" value={form.points} onChange={e => set('points', Number(e.target.value))}
-                className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] focus:outline-none focus:border-brand-primary transition" />
+              <h3 className="font-bold text-slate-800 text-lg border-b pb-2 mb-4">Sample Test Case 2</h3>
+              <label className={labelClass} style={{marginTop: 0}}>Sample Input 2</label>
+              <textarea value={form.sampleInput2 || ''} onChange={e => set('sampleInput2', e.target.value)} rows={2} className={`${inputClass} font-mono`} />
+              
+              <label className={labelClass}>Sample Output 2</label>
+              <textarea value={form.sampleOutput2 || ''} onChange={e => set('sampleOutput2', e.target.value)} rows={2} className={`${inputClass} font-mono`} />
+
+              <label className={labelClass}>Explanation 2</label>
+              <input value={form.explanation2 || ''} onChange={e => set('explanation2', e.target.value)} className={inputClass} />
             </div>
           </div>
-          <div>
-            <label className="block text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Success Rate</label>
-            <input value={form.successRate} onChange={e => set('successRate', e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] focus:outline-none focus:border-brand-primary transition"
-              placeholder="e.g. 75.4%" />
-          </div>
-          <div>
-            <label className="block text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Description (optional)</label>
-            <textarea value={form.description || ''} onChange={e => set('description', e.target.value)} rows={3}
-              className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-[14px] focus:outline-none focus:border-brand-primary transition resize-none"
-              placeholder="Problem statement..." />
-          </div>
+
         </div>
-        <div className="flex gap-3 px-8 py-5 border-t border-slate-100 bg-slate-50">
-          <button onClick={onClose} className="flex-1 py-2.5 border border-slate-200 text-slate-700 font-bold text-[13px] rounded-lg hover:bg-slate-100 transition">
+
+        {/* Footer */}
+        <div className="flex gap-3 px-8 py-5 border-t border-slate-100 bg-slate-50 shrink-0">
+          <button onClick={onClose} className="flex-1 py-3 border border-slate-200 text-slate-700 font-bold text-[14px] rounded-lg hover:bg-slate-100 transition">
             Cancel
           </button>
           <button onClick={() => { if (form.title.trim()) onSave({ ...form, id: initial.id }); }}
             disabled={!form.title.trim()}
-            className="flex-1 py-2.5 bg-brand-primary text-white font-bold text-[13px] rounded-lg hover:bg-brand-dark transition flex items-center justify-center gap-2 disabled:opacity-50">
-            <Save size={15} /> {initial.id ? 'Save Changes' : 'Add Challenge'}
+            className="flex-1 py-3 bg-brand-primary text-white font-bold text-[14px] rounded-lg hover:bg-brand-dark transition flex items-center justify-center gap-2 disabled:opacity-50">
+            <Save size={18} /> {initial.id ? 'Save Changes' : 'Save Challenge & Test Cases'}
           </button>
         </div>
       </motion.div>
@@ -243,7 +365,7 @@ export default function Admin() {
   useEffect(() => { if (tab === 'contests') loadContests(); }, [tab]);
 
   // Filtered challenges
-  const displayChallenges = filterTrack === 'all' ? challenges : challenges.filter(c => c.track === filterTrack);
+  const displayChallenges = filterTrack === 'all' ? challenges : challenges.filter(c => c.tracks ? c.tracks.includes(filterTrack) : c.track === filterTrack);
 
   // ── Challenge handlers
   const handleSaveChallenge = (data: Omit<Challenge, 'id'> & { id?: string }) => {
@@ -330,42 +452,58 @@ export default function Admin() {
   };
 
   const SIDE_NAV = [
-    { id: 'overview' as AdminTab, label: 'Overview', icon: <LayoutDashboard size={17} /> },
-    { id: 'challenges' as AdminTab, label: 'Challenges', icon: <Code2 size={17} />, badge: challenges.length },
-    { id: 'tracks' as AdminTab, label: 'Practice Tracks', icon: <BookOpen size={17} />, badge: tracks.length },
-    { id: 'contests' as AdminTab, label: 'Contests', icon: <Trophy size={17} /> },
-    { id: 'users' as AdminTab, label: 'Users', icon: <Users size={17} /> },
+    { id: 'overview' as AdminTab, label: 'Overview' },
+    { id: 'challenges' as AdminTab, label: 'Challenges' },
+    { id: 'practice_questions' as AdminTab, label: 'Practice' },
+    { id: 'contests' as AdminTab, label: 'Contests' },
+    { id: 'users' as AdminTab, label: 'Users' },
+    { id: 'quizzes' as AdminTab, label: 'Quizzes' },
+    { id: 'learn' as AdminTab, label: 'Learn' },
+    { id: 'mock_interviews' as AdminTab, label: 'Interviews' },
+    { id: 'companies' as AdminTab, label: 'Companies' },
   ];
 
   return (
-    <div className="flex h-screen bg-[#f3f7f7] font-sans overflow-hidden">
+    <div className="flex flex-col h-screen bg-[#f3f7f7] font-sans overflow-hidden">
 
-      {/* ── SIDEBAR ─────────────────────────────────────── */}
-      <aside className="w-56 bg-[#0e141e] flex flex-col shrink-0">
-        <div className="p-5 border-b border-white/10">
-          <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Admin Portal</p>
-          <p className="text-white font-black text-base mt-0.5">Glintspark</p>
-        </div>
-        <nav className="flex-1 p-3 space-y-1">
-          {SIDE_NAV.map(item => (
-            <button key={item.id} onClick={() => setTab(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-all ${
-                tab === item.id ? 'bg-brand-primary text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}>
-              {item.icon} <span>{item.label}</span>
-              {item.badge !== undefined && (
-                <span className={`ml-auto text-[10px] font-black px-2 py-0.5 rounded-full ${tab === item.id ? 'bg-white/20 text-white' : 'bg-white/10 text-slate-400'}`}>{item.badge}</span>
-              )}
+      {/* ── HEADER NAV ─────────────────────────────────────── */}
+      <header className="shrink-0 z-[100] border-b border-white/5 bg-slate-950/95 backdrop-blur-md">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 h-[68px] flex items-center justify-between w-full">
+          <div className="flex items-center gap-10 h-full overflow-hidden">
+            
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-col justify-center">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] leading-tight">Master Admin</span>
+                <span className="text-white font-black text-base leading-tight">Glintspark</span>
+              </div>
+            </div>
+            
+            <nav className="flex items-center gap-1 text-[14.5px] font-bold text-slate-400 h-full overflow-x-auto no-scrollbar">
+              {SIDE_NAV.map(item => (
+                <button key={item.id} onClick={() => setTab(item.id)}
+                  className={`px-4 py-2 rounded-full flex items-center gap-2 hover:text-white transition-all relative whitespace-nowrap ${
+                    tab === item.id ? 'text-white' : ''
+                  }`}>
+                  {tab === item.id && <motion.div layoutId="adminNavBg" className="absolute inset-0 bg-white/10 rounded-full" style={{ zIndex: 0 }} />}
+                  <span className="relative z-10 flex items-center gap-2">
+                    {item.label}
+                    {item.badge !== undefined && (
+                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${tab === item.id ? 'bg-white/20 text-white' : 'bg-white/10 text-slate-400'}`}>{item.badge}</span>
+                    )}
+                  </span>
+                </button>
+              ))}
+            </nav>
+          </div>
+          
+          <div className="flex items-center gap-4 shrink-0 pl-4 border-l border-white/10 ml-4">
+            <button onClick={() => navigate('/dashboard')}
+              className="flex items-center gap-2 px-4 py-2 rounded-full text-slate-400 hover:text-white hover:bg-white/5 text-[14.5px] font-bold transition">
+              <ArrowLeft size={16} /> Exit
             </button>
-          ))}
-        </nav>
-        <div className="p-3 border-t border-white/10">
-          <button onClick={() => navigate('/dashboard')}
-            className="w-full flex items-center gap-2 px-4 py-2.5 rounded-lg text-slate-500 hover:text-white hover:bg-white/5 text-[13px] font-semibold transition">
-            <ArrowLeft size={15} /> Back to App
-          </button>
+          </div>
         </div>
-      </aside>
+      </header>
 
       {/* ── MAIN ────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -374,12 +512,16 @@ export default function Admin() {
         <div className="bg-white border-b border-slate-200 px-8 py-5 flex items-center justify-between shrink-0">
           <div>
             <h1 className="text-xl font-black text-slate-900">
-              {tab === 'overview' ? 'Dashboard Overview' : tab === 'challenges' ? 'Challenges' : tab === 'tracks' ? 'Practice Tracks' : tab === 'contests' ? 'Contests' : 'Users'}
+              {tab === 'overview' ? 'Dashboard Overview' : tab === 'challenges' ? 'Challenges' : tab === 'practice_questions' ? 'Practice Questions' : tab === 'contests' ? 'Contests' : tab === 'users' ? 'Users' : tab === 'quizzes' ? 'Quizzes' : tab === 'learn' ? 'Learn Curriculum' : tab === 'mock_interviews' ? 'Mock Interviews' : tab === 'companies' ? 'Company Logs' : 'Admin'}
             </h1>
             <p className="text-sm text-slate-400 mt-0.5">
               {tab === 'challenges' ? 'Changes apply live to the user-facing challenges page.' :
-               tab === 'tracks' ? 'Manage programming language tracks and categories.' :
+               tab === 'practice_questions' ? 'Manage domain-specific practice coding questions.' :
                tab === 'contests' ? 'Manage upcoming and active contests.' :
+               tab === 'quizzes' ? 'Manage Aptitude, Reasoning, and Technical quizzes.' :
+               tab === 'learn' ? 'Manage curriculum content and lessons.' :
+               tab === 'mock_interviews' ? 'Review AI mock interview transcripts and statistics.' :
+               tab === 'companies' ? 'View and manage company accounts and activity logs.' :
                tab === 'users' ? 'View registered users and their stats.' : 'Platform metrics at a glance.'}
             </p>
           </div>
@@ -434,7 +576,7 @@ export default function Admin() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {[
                     { label: 'Manage Challenges', desc: 'Add, edit, or delete coding challenges', tab: 'challenges' as AdminTab, color: 'brand-primary' },
-                    { label: 'Manage Contests', desc: 'Edit contest details and prizes', tab: 'contests' as AdminTab, color: 'purple-600' },
+                    { label: 'Practice Questions', desc: 'Add domain-specific practice questions', tab: 'practice_questions' as AdminTab, color: 'blue-600' },
                     { label: 'View Users', desc: 'See all registered accounts and stats', tab: 'users' as AdminTab, color: 'indigo-600' },
                   ].map(card => (
                     <button key={card.tab} onClick={() => setTab(card.tab)}
@@ -461,49 +603,56 @@ export default function Admin() {
                 {tracks.map(t => (
                   <button key={t.id} onClick={() => setFilterTrack(t.id)}
                     className={`px-4 py-1.5 rounded-full text-[12px] font-bold border transition ${filterTrack === t.id ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-300 text-slate-600 hover:border-slate-700'}`}>
-                    {t.name} ({challenges.filter(c => c.track === t.id).length})
+                    {t.name} ({challenges.filter(c => c.tracks ? c.tracks.includes(t.id) : c.track === t.id).length})
                   </button>
                 ))}
               </div>
 
               {/* Challenges table */}
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                <table className="w-full text-left text-[13px]">
-                  <thead className="bg-[#f8fafc] border-b border-slate-200">
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden ring-1 ring-slate-900/5">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50/80 border-b border-slate-200">
                     <tr>
-                      <th className="px-6 py-3 text-[11px] font-black text-slate-400 uppercase tracking-wider">#</th>
-                      <th className="px-6 py-3 text-[11px] font-black text-slate-400 uppercase tracking-wider">Title</th>
-                      <th className="px-6 py-3 text-[11px] font-black text-slate-400 uppercase tracking-wider">Track</th>
-                      <th className="px-6 py-3 text-[11px] font-black text-slate-400 uppercase tracking-wider">Difficulty</th>
-                      <th className="px-6 py-3 text-[11px] font-black text-slate-400 uppercase tracking-wider">Category</th>
-                      <th className="px-6 py-3 text-[11px] font-black text-slate-400 uppercase tracking-wider text-center">Points</th>
-                      <th className="px-6 py-3 text-[11px] font-black text-slate-400 uppercase tracking-wider text-right">Actions</th>
+                      <th className="px-5 py-3.5 text-[11px] font-black text-slate-400 uppercase tracking-widest w-12">#</th>
+                      <th className="px-5 py-3.5 text-[11px] font-black text-slate-400 uppercase tracking-widest">Title & Category</th>
+                      <th className="px-5 py-3.5 text-[11px] font-black text-slate-400 uppercase tracking-widest">Track</th>
+                      <th className="px-5 py-3.5 text-[11px] font-black text-slate-400 uppercase tracking-widest">Difficulty</th>
+                      <th className="px-5 py-3.5 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">Score</th>
+                      <th className="px-5 py-3.5 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100 bg-white">
                     {displayChallenges.map((c, i) => (
                       <motion.tr key={c.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
-                        className="hover:bg-slate-50/60 transition-colors">
-                        <td className="px-6 py-4 text-slate-400 font-mono text-[12px]">{i + 1}</td>
-                        <td className="px-6 py-4 font-semibold text-slate-900 max-w-[280px]">{c.title}</td>
-                        <td className="px-6 py-4">
-                          <span className="text-[11px] font-bold bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">
+                        className="hover:bg-slate-50/80 transition-colors group">
+                        <td className="px-5 py-3 text-slate-400 font-mono text-[12px]">{i + 1}</td>
+                        <td className="px-5 py-3">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-[14px] text-slate-900 group-hover:text-brand-primary transition-colors">{c.title}</span>
+                            <span className="text-[12px] text-slate-500 font-medium mt-0.5">{c.category}</span>
+                          </div>
+                        </td>
+                        <td className="px-5 py-3">
+                          <span className="inline-flex items-center gap-1.5 text-[12px] font-bold text-slate-600 bg-slate-100/80 px-2.5 py-1 rounded-md border border-slate-200/60">
                             {tracks.find(t => t.id === c.track)?.name ?? c.track}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className={`text-[11px] font-black px-2.5 py-1 rounded-full ${DIFF_BADGE[c.difficulty]}`}>{c.difficulty}</span>
+                        <td className="px-5 py-3">
+                          <span className={`inline-flex items-center text-[11px] font-black px-2.5 py-1 rounded-md ${DIFF_BADGE[c.difficulty]}`}>
+                            {c.difficulty}
+                          </span>
                         </td>
-                        <td className="px-6 py-4 text-slate-500">{c.category}</td>
-                        <td className="px-6 py-4 text-center font-black text-slate-700">{c.points}</td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2 justify-end">
+                        <td className="px-5 py-3 text-center">
+                          <span className="font-black text-[13px] text-slate-700">{c.points} <span className="text-[10px] text-slate-400 font-bold ml-0.5">pts</span></span>
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-1.5 justify-end opacity-60 group-hover:opacity-100 transition-opacity">
                             <button onClick={() => setChallengeModal(c)}
-                              className="p-2 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition" title="Edit">
+                              className="p-1.5 rounded-md hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition" title="Edit">
                               <Pencil size={15} />
                             </button>
                             <button onClick={() => setDeleteChallengeTarget(c)}
-                              className="p-2 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-500 transition" title="Delete">
+                              className="p-1.5 rounded-md hover:bg-rose-50 text-slate-400 hover:text-rose-500 transition" title="Delete">
                               <Trash2 size={15} />
                             </button>
                           </div>
@@ -513,30 +662,30 @@ export default function Admin() {
                   </tbody>
                 </table>
                 {displayChallenges.length === 0 && (
-                  <div className="text-center py-16 text-slate-400 text-sm">No challenges found for this track.</div>
+                  <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                    <Code2 size={32} className="mb-3 opacity-20" />
+                    <p className="text-[14px] font-medium">No challenges found for this track.</p>
+                  </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* ─── TRACKS ────────────────────────────────── */}
-          {tab === 'tracks' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {tracks.map(t => (
-                <div key={t.id} onClick={() => { setTab('challenges'); setFilterTrack(t.id); }} className="bg-white border border-slate-200 rounded-[20px] p-6 shadow-sm hover:shadow-md hover:border-brand-primary/30 transition-all relative group cursor-pointer">
-                  <div className="w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center p-2 mb-4 group-hover:scale-110 transition-transform">
-                    {t.icon ? <img src={t.icon} alt={t.name} className="w-full h-full object-contain" /> : <div className="text-xl font-black text-slate-300">{t.initials}</div>}
-                  </div>
-                  <h3 className="text-[17px] font-black text-slate-900 mb-1 group-hover:text-brand-primary transition-colors">{t.name}</h3>
-                  <p className="text-[13px] text-slate-500 font-medium line-clamp-2">{t.desc}</p>
-                  
-                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={(e) => { e.stopPropagation(); setTrackModal(t); }} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"><Pencil size={16} /></button>
-                    <button onClick={(e) => { e.stopPropagation(); setDeleteTrackTarget(t); }} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"><Trash2 size={16} /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
+          {/* ─── PRACTICE QUESTIONS ─────────────────────── */}
+          {tab === 'practice_questions' && (
+            <AdminPracticeQuestions 
+              onAdd={() => setChallengeModal({ 
+                isPractice: true, 
+                title: '', 
+                difficulty: 'Easy', 
+                category: '', 
+                points: 10, 
+                description: '', 
+                tracks: ['javascript'] 
+              })}
+              onEdit={setChallengeModal}
+              onDelete={setDeleteChallengeTarget}
+            />
           )}
 
           {/* ─── CONTESTS ─────────────────────────────── */}
@@ -610,6 +759,27 @@ export default function Admin() {
                 </tbody>
               </table>
             </div>
+          )}
+
+
+          {/* ─── QUIZZES ────────────────────────────────── */}
+          {tab === 'quizzes' && (
+            <AdminQuizzes />
+          )}
+
+          {/* ─── LEARN ────────────────────────────────── */}
+          {tab === 'learn' && (
+            <AdminLearn />
+          )}
+
+          {/* ─── MOCK INTERVIEWS ────────────────────────────────── */}
+          {tab === 'mock_interviews' && (
+            <AdminMockInterviews />
+          )}
+
+          {/* ─── COMPANY LOGS ────────────────────────────────── */}
+          {tab === 'companies' && (
+            <AdminCompanyPermissions />
           )}
 
         </div>

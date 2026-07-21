@@ -1,32 +1,75 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Medal, Star, ArrowUpRight, Search, ChevronRight, Globe, Users, Target, Crown } from 'lucide-react';
+import { Trophy, Medal, Star, Search, Globe, Users, Target, Crown } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-
-const leaders = [
-  { rank: 1, name: 'Alex_Dev', points: 15420, streak: 124, country: 'USA', level: 'Diamond' },
-  { rank: 2, name: 'SarahCodes', points: 14850, streak: 89, country: 'CAN', level: 'Platinum' },
-  { rank: 3, name: 'K_Master', points: 12100, streak: 45, country: 'GER', level: 'Platinum' },
-  { rank: 4, name: 'DebugDivina', points: 11950, streak: 210, country: 'UK', level: 'Gold' },
-  { rank: 5, name: 'BitWiz', points: 10500, streak: 32, country: 'FRA', level: 'Gold' },
-  { rank: 6, name: 'PixelPusha', points: 9800, streak: 15, country: 'NLD', level: 'Silver' },
-  { rank: 7, name: 'CodeRunner', points: 9450, streak: 67, country: 'ITA', level: 'Silver' },
-  { rank: 8, name: 'ByteMe', points: 9100, streak: 12, country: 'IND', level: 'Silver' },
-  { rank: 9, name: 'SyntaxError', points: 8850, streak: 8, country: 'AUS', level: 'Bronze' },
-  { rank: 10, name: 'LogicBomb', points: 8200, streak: 41, country: 'BRA', level: 'Bronze' },
-];
+import { useAuth } from '../contexts/AuthContext';
+import { supabaseDB } from '../services/supabaseService';
+import StudentAnalyticsPanel from '../components/StudentAnalyticsPanel';
+import { useEffect } from 'react';
 
 export default function Leaderboard() {
-  const [activeTab, setActiveTab] = useState<'global' | 'monthly' | 'my-score'>('global');
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<'global' | 'monthly' | 'my-score' | 'batch-wise'>('global');
+  const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
+  const [selectedYear, setSelectedYear] = useState<string>('All Years');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  
+  const [realLeaders, setRealLeaders] = useState<any[]>([]);
+  const [loadingLeaders, setLoadingLeaders] = useState(true);
+
+  useEffect(() => {
+    async function fetchLeaders() {
+      try {
+        setLoadingLeaders(true);
+        const data = await supabaseDB.getLeaderboard(50);
+        // Map backend users to leaderboard format
+        const formatted = data.map((u: any, idx: number) => ({
+          rank: idx + 1,
+          name: u.name || `${u.firstName || 'Unknown'} ${u.lastName || 'User'}`,
+          email: u.email,
+          points: u.xp || 0,
+          streak: u.streak || 0,
+          country: u.country || 'Unknown', // Fallback if no country in DB
+          level: (u.xp || 0) > 10000 ? 'Diamond' : (u.xp || 0) > 5000 ? 'Platinum' : (u.xp || 0) > 1000 ? 'Gold' : (u.xp || 0) > 500 ? 'Silver' : 'Bronze'
+        }));
+        setRealLeaders(formatted);
+      } catch (err) {
+        console.error('Failed to fetch leaderboard', err);
+      } finally {
+        setLoadingLeaders(false);
+      }
+    }
+    fetchLeaders();
+  }, []);
+
+  const isCompanyUser = user?._id === 'mock_company' || user?.role === 'company' || user?.email?.endsWith('@glintspark.team') || user?.email === 'company@glintspark.com';
+  const companyDomain = (isCompanyUser && user?.email) ? user.email.split('@')[1] : null;
 
   // Filter data based on active tab
   const getFilteredLeaders = () => {
-    if (activeTab === 'global') return leaders;
-    if (activeTab === 'monthly') return leaders.slice(0, 5); 
+    // Create a deep copy to avoid mutating React state
+    let currentLeaders = realLeaders.map(l => ({ ...l }));
+
+    if (activeTab === 'monthly') {
+      currentLeaders = currentLeaders.filter(l => l.points > 0).sort((a, b) => b.points - a.points);
+    } else if (activeTab === 'batch-wise' && searchQuery.trim() !== '') {
+      currentLeaders = currentLeaders.filter(l => 
+        l.email.toLowerCase().includes(searchQuery.toLowerCase().trim()) || 
+        l.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
+      );
+    }
+
+    // Recalculate ranks based on the filtered set
+    currentLeaders.forEach((l, index) => {
+      l.rank = index + 1;
+    });
+
+    if (activeTab === 'global') return currentLeaders;
+    if (activeTab === 'monthly') return currentLeaders.slice(0, 5); 
     if (activeTab === 'my-score') return [
       { rank: 12042, name: 'You (Alex_Dev)', points: 1482, streak: 12, country: 'USA', level: 'Platinum' }
     ];
-    return leaders;
+    return currentLeaders;
   };
 
   const filteredLeaders = getFilteredLeaders();
@@ -87,25 +130,53 @@ export default function Leaderboard() {
       <div className="max-w-7xl mx-auto px-8 py-10 flex flex-col lg:flex-row gap-10">
         
         {/* ── Main Leaderboard Container ── */}
-        <div className="flex-1">
+        <div className="flex-1 max-w-5xl mx-auto">
           
           <div className="bg-white rounded-[32px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100/80 overflow-hidden">
             
             {/* Header Tabs */}
-            <div className="px-8 py-6 border-b border-slate-100 bg-white flex items-center gap-3">
-              {(['global', 'monthly', 'my-score'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-6 py-3 rounded-xl text-[13px] font-bold transition-all duration-300 ${
-                    activeTab === tab 
-                      ? 'bg-brand-primary text-white shadow-md shadow-brand-primary/20 scale-100' 
-                      : 'bg-white text-slate-500 hover:bg-slate-50 border border-transparent hover:border-slate-200'
-                  }`}
-                >
-                  {tab === 'global' ? 'Global Ranking' : tab === 'monthly' ? 'This Month' : 'Your Progress'}
-                </button>
-              ))}
+            <div className="px-8 py-6 border-b border-slate-100 bg-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                {(!isCompanyUser ? (['global', 'monthly', 'my-score'] as const) : (['global', 'batch-wise'] as const)).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-6 py-3 rounded-xl text-[13px] font-bold transition-all duration-300 ${
+                      activeTab === tab 
+                        ? 'bg-brand-primary text-white shadow-md shadow-brand-primary/20 scale-100' 
+                        : 'bg-white text-slate-500 hover:bg-slate-50 border border-transparent hover:border-slate-200'
+                    }`}
+                  >
+                    {tab === 'global' ? (companyDomain ? 'College Ranking' : 'Global Ranking') : tab === 'monthly' ? 'This Month' : tab === 'batch-wise' ? 'Year Wise' : 'Your Progress'}
+                  </button>
+                ))}
+              </div>
+
+              {isCompanyUser && activeTab === 'batch-wise' && (
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input 
+                      type="text"
+                      placeholder="Search Roll No..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[13px] font-bold text-slate-700 outline-none focus:border-brand-primary placeholder:text-slate-400 transition-colors w-40 md:w-48"
+                    />
+                  </div>
+                  <select 
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(e.target.value)}
+                    className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[13px] font-bold text-slate-700 outline-none focus:border-brand-primary cursor-pointer hover:bg-slate-100 transition-colors"
+                  >
+                    <option value="All Years">All Years</option>
+                    <option value="2024">Class of 2024</option>
+                    <option value="2025">Class of 2025</option>
+                    <option value="2026">Class of 2026</option>
+                    <option value="2027">Class of 2027</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* Table */}
@@ -116,6 +187,7 @@ export default function Leaderboard() {
                     <th className="px-8 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest w-24">Rank</th>
                     <th className="px-8 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Developer</th>
                     <th className="px-8 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">Glinto Score</th>
+                    {companyDomain && <th className="px-8 py-4 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">Action</th>}
                   </tr>
                 </thead>
                 <AnimatePresence mode="wait">
@@ -127,19 +199,35 @@ export default function Leaderboard() {
                     transition={{ duration: 0.2 }}
                     className="divide-y divide-slate-50"
                   >
-                    {filteredLeaders.map((l, i) => (
+                    {loadingLeaders ? (
+                      <tr>
+                        <td colSpan={4} className="py-12 text-center text-slate-400">
+                          Loading leaderboard...
+                        </td>
+                      </tr>
+                    ) : filteredLeaders.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-12 text-center text-slate-400">
+                          No developers found.
+                        </td>
+                      </tr>
+                    ) : filteredLeaders.map((l, idx) => {
+                      const displayRank = l.rank;
+                      return (
                       <tr 
                         key={l.rank}
-                        className="group hover:bg-slate-50/50 transition-colors"
+                        className="group border-b border-slate-50 last:border-0 hover:bg-slate-50/80 transition-colors"
                       >
                         <td className="px-8 py-5">
                           <div className="flex items-center gap-3">
-                            <span className={`text-[16px] font-black w-6 ${l.rank === 1 ? 'text-amber-500' : l.rank === 2 ? 'text-slate-400' : l.rank === 3 ? 'text-amber-700' : 'text-slate-400'}`}>
-                              #{l.rank}
+                            <span className={`font-black text-[15px] ${displayRank <= 3 ? 'text-slate-900' : 'text-slate-400'}`}>
+                              #{displayRank}
                             </span>
-                            {l.rank === 1 && <Crown size={18} className="text-amber-500 fill-amber-500 drop-shadow-sm" />}
-                            {l.rank === 2 && <Medal size={18} className="text-slate-400 fill-slate-300 drop-shadow-sm" />}
-                            {l.rank === 3 && <Medal size={18} className="text-amber-700 fill-amber-600 drop-shadow-sm" />}
+                            {companyDomain && (
+                              <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded uppercase tracking-wider" title="Global Rank">
+                                Global #{l.rank}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-8 py-5">
@@ -159,8 +247,19 @@ export default function Leaderboard() {
                         <td className="px-8 py-5 text-right font-black text-[16px] text-slate-900 tabular-nums">
                           {l.points.toLocaleString()}
                         </td>
+                        {companyDomain && (
+                          <td className="px-8 py-5 text-right">
+                            <button
+                              onClick={() => setSelectedStudent(l)}
+                              className="px-4 py-2 bg-brand-primary/10 hover:bg-brand-primary/20 text-brand-primary font-bold text-[12px] rounded-lg transition-colors uppercase tracking-widest"
+                            >
+                              View Details
+                            </button>
+                          </td>
+                        )}
                       </tr>
-                    ))}
+                      );
+                    })}
                   </motion.tbody>
                 </AnimatePresence>
               </table>
@@ -169,6 +268,7 @@ export default function Leaderboard() {
         </div>
 
         {/* ── Sidebar ── */}
+        {!isCompanyUser && (
         <div className="w-full lg:w-[340px] space-y-8">
           
           {/* Your Standing Card */}
@@ -236,9 +336,16 @@ export default function Leaderboard() {
               </div>
             </div>
           </div>
-
         </div>
+        )}
       </div>
+
+      {/* Slide-in Analytics Panel */}
+      <StudentAnalyticsPanel 
+        isOpen={selectedStudent !== null}
+        onClose={() => setSelectedStudent(null)}
+        student={selectedStudent}
+      />
     </div>
   );
 }

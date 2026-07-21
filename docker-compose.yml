@@ -8,5 +8,12 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes
 
+  piston:
+    image: ghcr.io/engineer-man/piston
+    ports:
+      - "2000:2000"
+    restart: always
+
 volumes:
   redis_data:
+

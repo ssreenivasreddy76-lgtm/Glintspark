@@ -5,10 +5,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { 
   Terminal, Mail, Lock, ArrowRight, User, Globe, 
   Command, Sparkles, AlertCircle, CheckCircle2, Loader2,
-  Eye, EyeOff
+  Eye, EyeOff, MapPin, BookOpen, Shield, KeyRound
 } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { supabase } from '../services/supabaseService';
+import ReCAPTCHA from 'react-google-recaptcha';
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -36,23 +37,146 @@ export default function Auth() {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Additional Company Form State
+  const [companyLocation, setCompanyLocation] = useState('');
+  const [companyCourse, setCompanyCourse] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [acceptTerms, setAcceptTerms] = useState(false);
+
+  // Security Features
+  const [isHuman, setIsHuman] = useState(false);
+  const [showOTP, setShowOTP] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+
+  const [checkoutStep, setCheckoutStep] = useState<1 | 2>(1);
+  const [contractYears, setContractYears] = useState<number>(1);
+  const PRICE_PER_YEAR = 10000;
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setSuccessMsg(null);
 
-    try {
-      if (userRole === 'company' && !email.trim().toLowerCase().endsWith('@glintspark.team')) {
-        throw new Error("Company Access Denied");
+    // --- SECURITY INTERCEPTION (CAPTCHA) ---
+    // Validate CAPTCHA
+    if (!isHuman) {
+      setError("Please verify that you are human.");
+      setLoading(false);
+      return;
+    }
+
+    // Pre-validate Sign Up forms
+    if (!isLogin) {
+      if (password.length < 8) {
+        setError("Password must be at least 8 characters long.");
+        setLoading(false);
+        return;
       }
+      if (!/[A-Z]/.test(password)) {
+        setError("Password must contain at least one uppercase letter.");
+        setLoading(false);
+        return;
+      }
+      if (!/[0-9]/.test(password)) {
+        setError("Password must contain at least one number.");
+        setLoading(false);
+        return;
+      }
+      if (userRole === 'company' && checkoutStep === 1) {
+        if (password !== confirmPassword) {
+          setError("Passwords do not match.");
+          setLoading(false);
+          return;
+        }
+        if (!acceptTerms) {
+          setError("You must accept the terms and conditions.");
+          setLoading(false);
+          return;
+        }
+      }
+    }
+    // ---------------------------------------------
+
+    try {
+      // --- HARDCODED DEMO CREDENTIALS ---
+      if (isLogin) {
+        const checkEmail = email.trim().toLowerCase();
+        const checkPass = password.trim();
+        if (checkEmail === 'admin@glintspark.com' && checkPass === 'founder@123') {
+          localStorage.setItem('mock_role', 'admin');
+          window.location.href = '/admin';
+          return;
+        }
+        if (checkEmail === 'company@glintspark.com' && checkPass === 'company@123') {
+          localStorage.setItem('mock_role', 'company');
+          window.location.href = '/company';
+          return;
+        }
+        if (checkEmail === 'admin@srit.ac.in' && checkPass === 'srit@123') {
+          // Store actual email in session storage so AuthContext and Leaderboard can read it
+          sessionStorage.setItem('mock_email', 'admin@srit.ac.in');
+          localStorage.setItem('mock_role', 'company');
+          window.location.href = '/company';
+          return;
+        }
+      }
+      // ----------------------------------
+
+      // Relaxed company access for checkout demo
+      // if (userRole === 'company' && !email.trim().toLowerCase().endsWith('@glintspark.team')) {
+      //   throw new Error("Company Access Denied");
+      // }
 
       if (isLogin) {
+
         // 1. Validate if email exists in our registered users database
         const { data: userCheck, error: checkErr } = await supabase
           .from('users')
           .select('id')
           .eq('email', email.trim());
+
+        // --- COMPANY LOGIN MOCK CHECK ---
+        if (userRole === 'company') {
+          let paidCompanies: Record<string, any> = {};
+          try {
+            const raw = localStorage.getItem('mock_paid_companies');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                // Migrate old array format
+                parsed.forEach(email => paidCompanies[email] = { type: 'full', expiresAt: null });
+              } else {
+                paidCompanies = parsed;
+              }
+            }
+          } catch(e) {}
+          
+          const companyRecord = paidCompanies[email.trim().toLowerCase()];
+
+          if (!companyRecord && (!userCheck || userCheck.length === 0)) {
+            // Not paid and no account - redirect to checkout!
+            setIsLogin(false);
+            setCheckoutStep(2);
+            setLoading(false);
+            return;
+          } else if (companyRecord) {
+            // Check trial expiration
+            if (companyRecord.type === 'trial' && companyRecord.expiresAt && Date.now() > companyRecord.expiresAt) {
+              setError("Your 1-month free trial has expired. Please purchase a full license to regain access to your dashboard.");
+              setIsLogin(false);
+              setCheckoutStep(2);
+              setLoading(false);
+              return;
+            }
+            // Mock success for any company login if they are in the paid list and not expired
+            sessionStorage.setItem('mock_email', email.trim());
+            localStorage.setItem('mock_role', 'company');
+            window.location.href = '/company';
+            return;
+          }
+        }
+        // ----------------------------------
 
         if (checkErr) {
           console.warn("DB email check failed, falling back to standard login:", checkErr);
@@ -71,9 +195,49 @@ export default function Auth() {
           }
           throw signInError;
         }
+        sessionStorage.setItem('mock_email', email.trim().toLowerCase());
         // Navigation is handled by useEffect
       } else {
-        // Sign Up Flow
+        // --- COMPANY MOCK CHECKOUT FLOW ---
+        if (userRole === 'company') {
+          if (checkoutStep === 1) {
+            // Validation moved to Security Interception
+            setCheckoutStep(2);
+            setLoading(false);
+            return;
+          }
+          if (checkoutStep === 2) {
+            // Simulate Payment Processing
+            await new Promise(r => setTimeout(r, 1500));
+            // Mock Success: Save to paid list
+            let paidCompanies: Record<string, any> = {};
+            try {
+              const raw = localStorage.getItem('mock_paid_companies');
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                  parsed.forEach(e => paidCompanies[e] = { type: 'full', expiresAt: null });
+                } else {
+                  paidCompanies = parsed;
+                }
+              }
+            } catch(e) {}
+            
+            // If contractYears is 0, it's a trial. 30 days = 30 * 24 * 60 * 60 * 1000 = 2592000000 ms
+            paidCompanies[email.trim().toLowerCase()] = {
+              type: contractYears === 0 ? 'trial' : 'full',
+              expiresAt: contractYears === 0 ? Date.now() + 2592000000 : null
+            };
+            localStorage.setItem('mock_paid_companies', JSON.stringify(paidCompanies));
+            
+            sessionStorage.setItem('mock_email', email.trim());
+            localStorage.setItem('mock_role', 'company');
+            window.location.href = '/company';
+            return;
+          }
+        }
+        // ----------------------------------
+
         const { data, error: signUpError } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -114,6 +278,7 @@ export default function Auth() {
         }
 
         if (data.session) {
+          sessionStorage.setItem('mock_email', email.trim().toLowerCase());
           // Navigation is handled by useEffect
         } else {
           setSuccessMsg('Registration successful! Please check your email for the verification link.');
@@ -135,6 +300,9 @@ export default function Auth() {
         provider,
         options: {
           redirectTo: window.location.origin + from,
+          queryParams: {
+            prompt: 'select_account'
+          }
         },
       });
       if (oauthError) throw oauthError;
@@ -150,7 +318,7 @@ export default function Auth() {
       {/* Left Hemisphere - Branding & Graphic (Hidden on mobile) */}
       <div className="hidden lg:flex flex-1 relative overflow-hidden group bg-slate-950">
         <div className="absolute inset-0 z-0">
-          <img src="/auth-bg.png" alt="Background" className="w-full h-full object-cover transition-transform duration-[2s] ease-out group-hover:scale-105 opacity-80" />
+          <img src="https://images.unsplash.com/photo-1555066931-4365d14bab8c?q=80&w=2070&auto=format&fit=crop" alt="Background" className="w-full h-full object-cover transition-transform duration-[2s] ease-out group-hover:scale-105 opacity-60" />
           <div className="absolute inset-0 bg-slate-950/30 backdrop-blur-[1px]"></div>
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent"></div>
         </div>
@@ -269,109 +437,282 @@ export default function Auth() {
               {/* Form Elements */}
               <form className="space-y-4" onSubmit={handleAuth}>
                 
-                {!isLogin && (
-                  <div className="space-y-4">
+                {/* --- OTP VERIFICATION STEP --- */}
+                {showOTP ? (
+                  <div className="space-y-6 animate-in fade-in zoom-in-95 duration-300">
+                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 text-center">
+                      <div className="w-16 h-16 bg-brand-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <KeyRound size={28} className="text-brand-primary" />
+                      </div>
+                      <h3 className="font-black text-slate-900 mb-2 text-lg">Two-Factor Authentication</h3>
+                      <p className="text-sm text-slate-500 font-medium mb-6">
+                        We've sent a 6-digit verification code to <span className="text-slate-800 font-bold">{email}</span>. Please enter it below.
+                      </p>
+                      
+                      <div className="relative">
+                        <input 
+                          type="text" 
+                          maxLength={6}
+                          placeholder="0 0 0 0 0 0" 
+                          value={otpCode}
+                          onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
+                          className="w-full py-4 bg-white border border-slate-300 rounded-xl text-2xl tracking-[0.5em] text-center focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-all text-slate-900 font-black font-mono"
+                          required
+                        />
+                      </div>
+                    </div>
+                    
+                    <button 
+                      type="submit"
+                      disabled={loading || otpCode.length !== 6}
+                      className="w-full bg-slate-900 hover:bg-brand-primary hover:-translate-y-0.5 disabled:bg-slate-500 disabled:hover:translate-y-0 text-white font-bold py-4 px-4 rounded-xl transition-all duration-300 shadow-xl shadow-brand-primary/20 flex items-center justify-center gap-2"
+                    >
+                      {loading ? <Loader2 size={18} className="animate-spin" /> : 'Verify & Continue'}
+                    </button>
+                    <p className="text-center text-xs text-slate-500 font-medium mt-4">
+                      Didn't receive a code? <span className="text-brand-primary font-bold cursor-pointer hover:underline">Resend</span>
+                    </p>
+                  </div>
+                ) : !isLogin && userRole === 'company' && checkoutStep === 2 ? (
+                  <div className="space-y-6">
+                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                      <h3 className="font-black text-slate-900 mb-4">Select Contract Duration</h3>
+                      <div className="space-y-3">
+                        {[0, 1, 2, 3, 5].map((years) => (
+                          <label key={years} className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${contractYears === years ? 'border-brand-primary bg-brand-primary/5 shadow-sm' : 'border-slate-200 hover:border-brand-primary/50 bg-white'}`}>
+                            <div className="flex items-center gap-3">
+                              <input type="radio" name="contract" value={years} checked={contractYears === years} onChange={() => setContractYears(years)} className="text-brand-primary focus:ring-brand-primary h-4 w-4" />
+                              <span className="font-bold text-slate-700">
+                                {years === 0 ? '1 Month Free Trial' : `${years} ${years === 1 ? 'Year' : 'Years'} License`}
+                              </span>
+                            </div>
+                            <span className="font-black text-slate-900">
+                              {years === 0 ? 'Free' : `$${(PRICE_PER_YEAR * years).toLocaleString()}`}
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                      
+                      <div className="mt-6 pt-4 border-t border-slate-200 flex justify-between items-end">
+                        <div>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Total Due</p>
+                          <p className="text-3xl font-black text-brand-primary">${(PRICE_PER_YEAR * contractYears).toLocaleString()}</p>
+                        </div>
+                        <button type="button" onClick={() => setCheckoutStep(1)} className="text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors">Back</button>
+                      </div>
+                    </div>
+                    
+                    <button 
+                      type="submit"
+                      disabled={loading}
+                      className="w-full bg-slate-900 hover:bg-brand-primary hover:-translate-y-0.5 disabled:bg-slate-500 disabled:hover:translate-y-0 text-white font-bold py-4 px-4 rounded-xl transition-all duration-300 shadow-xl shadow-brand-primary/20 flex items-center justify-center gap-2"
+                    >
+                      {loading ? <Loader2 size={18} className="animate-spin" /> : (contractYears === 0 ? 'Start Free Trial' : 'Process Payment & Generate License')}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {!isLogin && (
+                      <div className="space-y-4">
+                        <div className="relative group">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-primary transition-colors">
+                            <User size={18} />
+                          </div>
+                          <input 
+                            type="text" 
+                            placeholder={userRole === 'developer' ? "Full Name" : "Company / College Name"}
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            className="w-full pl-11 pr-4 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
+                            required
+                          />
+                        </div>
+                      </div>
+                    )}
+
                     <div className="relative group">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-primary transition-colors">
-                        <User size={18} />
+                        <Mail size={18} />
                       </div>
                       <input 
-                        type="text" 
-                        placeholder={userRole === 'developer' ? "Full Name" : "Company Name"}
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        type="email" 
+                        placeholder={userRole === 'developer' ? "Email address" : "Work / College email"}
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
                         className="w-full pl-11 pr-4 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
                         required
+                        autoComplete="email"
                       />
                     </div>
-                  </div>
-                )}
 
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-primary transition-colors">
-                    <Mail size={18} />
-                  </div>
-                  <input 
-                    type="email" 
-                    placeholder={userRole === 'developer' ? "Email address" : "Work email"}
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
-                    required
-                    autoComplete="email"
-                  />
-                </div>
-
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-primary transition-colors">
-                    <Lock size={18} />
-                  </div>
-                  <input 
-                    type={showPassword ? "text" : "password"} 
-                    placeholder="Password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-11 pr-12 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
-                    required
-                    autoComplete={isLogin ? "current-password" : "new-password"}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-
-                <div className="pt-3">
-                  <button 
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-slate-900 hover:bg-indigo-600 hover:-translate-y-0.5 disabled:bg-slate-500 disabled:hover:translate-y-0 text-white font-bold py-3.5 px-4 rounded-xl transition-all duration-300 shadow-xl hover:shadow-indigo-500/25 flex items-center justify-center gap-2"
-                  >
-                    {loading ? (
-                      <Loader2 size={18} className="animate-spin" />
-                    ) : (
-                      isLogin ? (userRole === 'developer' ? 'Sign In' : 'Enterprise Log In') : (userRole === 'developer' ? 'Create Account' : 'Get Started')
+                    {!isLogin && userRole === 'company' && (
+                      <>
+                        <div className="relative group">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-primary transition-colors">
+                            <MapPin size={18} />
+                          </div>
+                          <input 
+                            type="text" 
+                            placeholder="College Location (City, State)"
+                            value={companyLocation}
+                            onChange={(e) => setCompanyLocation(e.target.value)}
+                            className="w-full pl-11 pr-4 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
+                            required
+                          />
+                        </div>
+                        <div className="relative group">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-primary transition-colors">
+                            <BookOpen size={18} />
+                          </div>
+                          <input 
+                            type="text" 
+                            placeholder="Courses / Domains (e.g. CSE, ECE)"
+                            value={companyCourse}
+                            onChange={(e) => setCompanyCourse(e.target.value)}
+                            className="w-full pl-11 pr-4 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
+                            required
+                          />
+                        </div>
+                      </>
                     )}
-                  </button>
-                </div>
+
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-primary transition-colors">
+                        <Lock size={18} />
+                      </div>
+                      <input 
+                        type={showPassword ? "text" : "password"} 
+                        placeholder="Password" 
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full pl-11 pr-12 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
+                        required
+                        autoComplete={isLogin ? "current-password" : "new-password"}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+
+                    {!isLogin && (
+                      <div className="pt-2 px-1">
+                        <div className="flex flex-col gap-1.5">
+                          <div className={`flex items-center gap-2 text-xs font-medium ${password.length >= 8 ? 'text-emerald-600' : 'text-slate-500'}`}>
+                            <CheckCircle2 size={14} className={password.length >= 8 ? 'text-emerald-500' : 'text-slate-300'} />
+                            At least 8 characters
+                          </div>
+                          <div className={`flex items-center gap-2 text-xs font-medium ${/[A-Z]/.test(password) ? 'text-emerald-600' : 'text-slate-500'}`}>
+                            <CheckCircle2 size={14} className={/[A-Z]/.test(password) ? 'text-emerald-500' : 'text-slate-300'} />
+                            At least 1 uppercase letter
+                          </div>
+                          <div className={`flex items-center gap-2 text-xs font-medium ${/[0-9]/.test(password) ? 'text-emerald-600' : 'text-slate-500'}`}>
+                            <CheckCircle2 size={14} className={/[0-9]/.test(password) ? 'text-emerald-500' : 'text-slate-300'} />
+                            At least 1 number (0-9)
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {!isLogin && userRole === 'company' && (
+                      <>
+                        <div className="relative group">
+                          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-primary transition-colors">
+                            <Lock size={18} />
+                          </div>
+                          <input 
+                            type={showPassword ? "text" : "password"} 
+                            placeholder="Confirm Password" 
+                            value={confirmPassword}
+                            onChange={(e) => setConfirmPassword(e.target.value)}
+                            className="w-full pl-11 pr-12 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
+                            required
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <input 
+                            type="checkbox" 
+                            id="acceptTerms"
+                            checked={acceptTerms}
+                            onChange={(e) => setAcceptTerms(e.target.checked)}
+                            className="w-4 h-4 rounded text-brand-primary focus:ring-brand-primary border-slate-300"
+                            required
+                          />
+                          <label htmlFor="acceptTerms" className="text-xs text-slate-600 font-medium">
+                            I agree to the <span className="text-brand-primary font-bold cursor-pointer hover:underline">Terms of Service</span> and <span className="text-brand-primary font-bold cursor-pointer hover:underline">Privacy Policy</span>
+                          </label>
+                        </div>
+                      </>
+                    )}
+
+                    {/* --- CAPTCHA WIDGET --- */}
+                    <div className="pt-2 flex justify-center">
+                      <ReCAPTCHA
+                        sitekey="6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
+                        onChange={(val) => setIsHuman(!!val)}
+                        theme="light"
+                      />
+                    </div>
+                    {/* ---------------------- */}
+
+                    <div className="pt-3">
+                      <button 
+                        type="submit"
+                        disabled={loading}
+                        className="w-full bg-slate-900 hover:bg-indigo-600 hover:-translate-y-0.5 disabled:bg-slate-500 disabled:hover:translate-y-0 text-white font-bold py-3.5 px-4 rounded-xl transition-all duration-300 shadow-xl hover:shadow-indigo-500/25 flex items-center justify-center gap-2"
+                      >
+                        {loading ? (
+                          <Loader2 size={18} className="animate-spin" />
+                        ) : (
+                          isLogin ? (userRole === 'developer' ? 'Sign In' : 'Enterprise Log In') : (userRole === 'developer' ? 'Create Account' : 'Continue to Checkout')
+                        )}
+                      </button>
+                    </div>
+                  </>
+                )}
               </form>
 
-              {/* Separator */}
-              <div className="mt-8 flex items-center justify-between opacity-80">
-                <span className="border-b border-slate-200 w-full"></span>
-                <span className="text-[10px] text-center text-slate-400 uppercase font-black px-4 tracking-widest whitespace-nowrap">Or continue with</span>
-                <span className="border-b border-slate-200 w-full"></span>
-              </div>
+              {/* OAuth Providers (Developers Only) */}
+              {userRole === 'developer' && (
+                <>
+                  {/* Separator */}
+                  <div className="mt-8 flex items-center justify-between opacity-80">
+                    <span className="border-b border-slate-200 w-full"></span>
+                    <span className="text-[10px] text-center text-slate-400 uppercase font-black px-4 tracking-widest whitespace-nowrap">Or continue with</span>
+                    <span className="border-b border-slate-200 w-full"></span>
+                  </div>
 
-              {/* OAuth Providers */}
-              <div className="mt-8 grid grid-cols-2 gap-4">
-                <button 
-                  onClick={() => handleOAuth('google')}
-                  disabled={loading}
-                  className="flex items-center justify-center gap-2.5 py-3 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 hover:-translate-y-0.5 disabled:bg-slate-100 disabled:hover:translate-y-0 rounded-xl text-sm font-bold text-slate-700 transition-all duration-300 shadow-sm"
-                >
-                  <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.7 17.74 9.5 24 9.5z"/>
-                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-                  </svg>
-                  Google
-                </button>
-                <button 
-                  onClick={() => handleOAuth('github')}
-                  disabled={loading}
-                  className="flex items-center justify-center gap-2.5 py-3 bg-[#1e2327] hover:bg-[#15181a] hover:-translate-y-0.5 disabled:bg-slate-500 disabled:hover:translate-y-0 text-white shadow-md hover:shadow-xl rounded-xl text-sm font-bold transition-all duration-300"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                    <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.295 2.747-1.026 2.747-1.026.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12c0-5.523-4.477-10-10-10z"/>
-                  </svg>
-                  GitHub
-                </button>
-              </div>
+                  {/* Provider Buttons */}
+                  <div className="mt-8 grid grid-cols-2 gap-4">
+                    <button 
+                      onClick={() => handleOAuth('google')}
+                      disabled={loading}
+                      className="flex items-center justify-center gap-2.5 py-3 border border-slate-200 hover:bg-slate-50 hover:border-slate-300 hover:-translate-y-0.5 disabled:bg-slate-100 disabled:hover:translate-y-0 rounded-xl text-sm font-bold text-slate-700 transition-all duration-300 shadow-sm"
+                    >
+                      <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.7 17.74 9.5 24 9.5z"/>
+                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                      </svg>
+                      Google
+                    </button>
+                    <button 
+                      onClick={() => handleOAuth('github')}
+                      disabled={loading}
+                      className="flex items-center justify-center gap-2.5 py-3 bg-[#1e2327] hover:bg-[#15181a] hover:-translate-y-0.5 disabled:bg-slate-500 disabled:hover:translate-y-0 text-white shadow-md hover:shadow-xl rounded-xl text-sm font-bold transition-all duration-300"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                        <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.295 2.747-1.026 2.747-1.026.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12c0-5.523-4.477-10-10-10z"/>
+                      </svg>
+                      GitHub
+                    </button>
+                  </div>
+                </>
+              )}
 
               {/* Guest Access - Only visible on localhost for testing */}
               {(window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') && (

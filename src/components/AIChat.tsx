@@ -72,14 +72,19 @@ export function AIChat() {
     <>
       {/* Floating Toggle Button */}
       <motion.button
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
+        initial={{ scale: 0, y: 50 }}
+        animate={{ scale: 1, y: [0, -8, 0] }}
+        transition={{ y: { repeat: Infinity, duration: 3, ease: "easeInOut" } }}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-6 right-6 z-50 p-4 rounded-full shadow-2xl bg-brand-primary text-white flex items-center justify-center transition-colors hover:bg-brand-dark ${isOpen ? 'hidden' : 'block'}`}
+        className={`fixed bottom-6 right-6 z-50 px-6 py-4 rounded-full shadow-[0_10px_40px_rgba(37,99,235,0.4)] bg-gradient-to-r from-blue-600 to-cyan-500 text-white items-center gap-3 transition-all group hover:shadow-[0_10px_50px_rgba(6,182,212,0.6)] ${isOpen ? 'hidden' : 'flex'}`}
       >
-        <Sparkles size={24} />
+        <div className="relative flex items-center justify-center">
+           <Sparkles size={20} className="group-hover:animate-pulse" />
+           <div className="absolute inset-0 bg-white/20 rounded-full blur-md animate-ping opacity-75"></div>
+        </div>
+        <span className="font-bold text-[15px] tracking-wide pr-1">Ask Glintspark AI</span>
       </motion.button>
 
       {/* Chat Panel */}
@@ -99,7 +104,7 @@ export function AIChat() {
                   <Sparkles size={16} className="text-brand-primary" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900 text-sm">Spark AI Tutor</h3>
+                  <h3 className="font-bold text-slate-900 text-sm">Glintspark AI</h3>
                   <p className="text-xs text-slate-500">Powered by Local AI</p>
                 </div>
               </div>
@@ -157,8 +162,8 @@ export function AIChat() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask Spark AI..."
-                  className="w-full bg-white border border-slate-300 rounded-full px-4 py-3 pr-12 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all"
+                  placeholder="Ask Glintspark AI..."
+                  className="w-full bg-white border border-slate-300 rounded-full px-4 py-3 pr-12 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all shadow-sm"
                   disabled={isLoading}
                 />
                 <button

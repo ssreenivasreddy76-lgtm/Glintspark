@@ -7,8 +7,8 @@ import {
   Lock, TrendingUp, Award, Target,
   ChevronRight, Filter, Plus
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
-
+import { Link, Navigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 // ── Countdown Hook ────────────────────────────────────────────
 function useCountdown(targetSeconds: number) {
   const [secs, setSecs] = useState(targetSeconds);
@@ -71,6 +71,7 @@ const stats = [
 
 // ── Component ─────────────────────────────────────────────────
 export default function Contests() {
+  const { user, loading } = useAuth();
   const countdown = useCountdown(5085); // 01:24:45
 
   const [localContests, setLocalContests] = useState<any[]>([]);
@@ -97,8 +98,22 @@ export default function Contests() {
     setDeletedHc(deleted);
   }, []);
 
+  const isCompanyUser = user?._id === 'mock_company' || user?.role === 'company' || user?.email?.endsWith('@glintspark.team') || user?.email === 'company@glintspark.com';
+
   const visibleUpcoming = upcoming.filter(c => !deletedHc.includes(c.id.toString()));
-  const allContests = [...localContests, ...visibleUpcoming];
+  const allContests = isCompanyUser ? localContests : [...localContests, ...visibleUpcoming];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/auth" />;
+  }
 
   return (
     <div className="bg-[#f8fafc] min-h-screen pb-24 font-sans text-[#0e141e]">

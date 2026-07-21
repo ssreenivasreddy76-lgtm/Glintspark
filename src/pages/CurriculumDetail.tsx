@@ -36,50 +36,45 @@ export default function CurriculumDetail() {
   const { challenges } = useChallenges();
 
   const syllabus = useMemo(() => {
-    // Base hardcoded curriculum concepts
-    const baseSyllabus = [
+    let savedLessons: any[] = [];
+    const saved = localStorage.getItem('mock_curriculum_lessons');
+    if (saved && topic) {
+      try {
+        const parsed = JSON.parse(saved);
+        savedLessons = parsed[topic] || [];
+      } catch {
+        // ignore
+      }
+    }
+
+    if (savedLessons.length === 0) {
+      // Fallback
+      return [
+        {
+          level: 'Curriculum',
+          title: 'Modules',
+          description: 'No lessons available for this track yet.',
+          lessons: []
+        }
+      ];
+    }
+
+    // Just group all under a single module for simplicity
+    return [
       {
-        level: 'Beginner',
-        title: 'Foundations & Basics',
-        description: 'Master the core syntax and fundamental concepts.',
-        lessons: [
-          { id: 'variables', title: 'Variables & Data Types', type: 'Concept', points: 10, isCompleted: true },
-          { id: 'control-flow', title: 'Control Flow & Logic', type: 'Concept', points: 15, isCompleted: true },
-        ],
-      },
-      {
-        level: 'Intermediate',
-        title: 'Data Structures & Functions',
-        description: 'Learn to organize code and manipulate complex data.',
-        lessons: [
-          { id: 'arrays', title: 'Arrays & Objects', type: 'Concept', points: 20, isCompleted: false },
-          { id: 'functions', title: 'Functions & Scope', type: 'Concept', points: 20, isCompleted: false },
-        ],
-      },
-      {
-        level: 'Advanced',
-        title: 'Architecture & Asynchronous',
-        description: 'Build robust, non-blocking applications like a pro.',
-        lessons: [
-          { id: 'async', title: 'Promises & Async/Await', type: 'Concept', points: 30, isCompleted: false },
-          { id: 'api', title: 'Fetching API Data', type: 'Concept', points: 30, isCompleted: false },
-        ],
-      },
+        level: 'Curriculum',
+        title: 'Core Lessons',
+        description: 'Master the fundamentals of this track.',
+        lessons: savedLessons.map(l => ({
+          id: l.id,
+          title: l.title,
+          type: l.type === 'video' ? 'Video' : 'Article',
+          points: l.duration * 2, // arbitrary points based on duration
+          isCompleted: false
+        }))
+      }
     ];
-
-    // Get track specific challenges
-    const trackChallenges = challenges.filter(c => c.track === topic);
-    
-    // Inject challenges dynamically based on difficulty
-    trackChallenges.forEach(c => {
-      const lessonItem = { id: c.id, title: c.title, type: 'Challenge', points: c.points, isCompleted: false };
-      if (c.difficulty === 'Easy') baseSyllabus[0].lessons.push(lessonItem);
-      else if (c.difficulty === 'Medium') baseSyllabus[1].lessons.push(lessonItem);
-      else if (c.difficulty === 'Hard') baseSyllabus[2].lessons.push(lessonItem);
-    });
-
-    return baseSyllabus;
-  }, [challenges, topic]);
+  }, [topic]);
 
   const [expandedLevels, setExpandedLevels] = useState<string[]>(['Beginner']);
 
@@ -91,31 +86,28 @@ export default function CurriculumDetail() {
   return (
     <div className="bg-[#f3f7f7] min-h-screen font-sans">
 
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 shadow-sm relative z-20 pt-6 pb-6">
-        <div className="max-w-[1240px] mx-auto px-10 relative">
+      {/* Dark Header (Matching Challenges.tsx) */}
+      <div className="bg-[#1e2330] text-white pt-10 pb-16">
+        <div className="max-w-7xl mx-auto px-8 relative">
 
           {/* Breadcrumbs */}
-          <div className="flex items-center gap-2 text-[11px] font-medium text-[#738f93] mb-3 leading-none uppercase tracking-wide">
-            <span onClick={() => navigate('/curriculum')} className="hover:text-brand-primary cursor-pointer transition">
+          <div className="flex items-center gap-2 text-[12px] font-bold text-[#8a9bb1] mb-4 leading-none uppercase tracking-widest">
+            <span onClick={() => navigate('/curriculum')} className="hover:text-white cursor-pointer transition">
               Prepare
             </span>
-            <ChevronRight size={10} className="opacity-40" />
-            <span className="opacity-60">{topic?.replace('-', ' ')}</span>
+            <span className="opacity-60">/</span>
+            <span className="text-white">{topic?.replace('-', ' ')}</span>
           </div>
 
-          {/* Title + icon */}
-          <div className="flex items-center justify-between">
+          {/* Title */}
+          <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-[32px] font-bold text-[#1e2330] tracking-tight leading-none capitalize mb-2">
+              <h1 className="text-3xl font-bold tracking-tight mb-3 capitalize">
                 {topic?.replace('-', ' ')} Syllabus
               </h1>
-              <p className="text-[14px] text-[#5c6e7a]">
+              <p className="text-[#8a9bb1] text-[15px] max-w-2xl">
                 Step-by-step master track designed to take you from absolute beginner to industry expert.
               </p>
-            </div>
-            <div className="w-12 h-12 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center p-2 shadow-sm shrink-0">
-              <img src={getTopicIcon(topic)} alt={topic} className="w-full h-full object-contain" />
             </div>
           </div>
 
@@ -123,95 +115,62 @@ export default function CurriculumDetail() {
       </div>
 
       {/* Content */}
-      <div className="max-w-[1440px] mx-auto w-full flex justify-center items-start gap-8 px-4 xl:px-8 relative">
-        <main className="w-full max-w-[800px] py-16 flex flex-col gap-8 pb-32">
+      <div className="max-w-7xl mx-auto px-8 pt-10 pb-32">
+        <div className="w-full flex flex-col gap-10">
           {syllabus.map((section, idx) => (
-            <div key={section.level} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-
-              {/* Accordion Header */}
-              <div
-                onClick={() => toggleLevel(section.level)}
-                className="p-6 md:p-8 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors select-none"
-              >
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-[#738f93]">{section.level}</span>
-                    {idx === 0 && (
-                      <span className="bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-widest">
-                        In Progress
-                      </span>
-                    )}
-                  </div>
-                  <h2 className="text-2xl font-bold text-[#1e2330] tracking-tight">{section.title}</h2>
-                  <p className="text-[15px] text-[#5c6e7a] mt-1">{section.description}</p>
-                </div>
-                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-[#5c6e7a] shrink-0">
-                  {expandedLevels.includes(section.level) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                </div>
+            <div key={section.level} className="space-y-4">
+              
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                <h2 className="text-[22px] font-bold text-slate-800 tracking-tight">{section.title} <span className="text-[14px] font-medium text-slate-500 ml-2">({section.level})</span></h2>
+                <span className="text-[12px] font-bold text-slate-400 uppercase tracking-widest">{section.lessons.length} Modules</span>
               </div>
 
-              {/* Accordion Body */}
-              <AnimatePresence>
-                {expandedLevels.includes(section.level) && (
+              <div className="space-y-4">
+                {section.lessons.map((lesson, lIdx) => (
                   <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="border-t border-slate-100 bg-slate-50/50 overflow-hidden"
+                    key={lesson.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: lIdx * 0.05 }}
+                    onClick={() => {
+                      if (lesson.type === 'Concept') {
+                        navigate(`/curriculum/${topic}/lesson/${lesson.id}`);
+                      } else {
+                        navigate(`/challenges/${lesson.id}`);
+                      }
+                    }}
+                    className={`bg-white border rounded-[4px] transition-all group flex flex-col md:flex-row justify-between items-center gap-6 px-8 py-6 relative overflow-hidden cursor-pointer ${
+                      lesson.isCompleted ? 'border-emerald-300 hover:border-emerald-500' : 'border-slate-300 hover:border-slate-800'
+                    }`}
                   >
-                    <div className="p-4 md:p-6 space-y-3">
-                      {section.lessons.map((lesson, lIdx) => (
-                        <div
-                          key={lesson.id}
-                          onClick={() => {
-                            if (lesson.type === 'Concept') {
-                              navigate(`/curriculum/${topic}/lesson/${lesson.id}`);
-                            } else {
-                              navigate(`/challenges/${lesson.id}`);
-                            }
-                          }}
-                          className={`p-4 md:p-5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                            lesson.isCompleted
-                              ? 'bg-white border-slate-200 hover:border-emerald-300 hover:shadow-sm'
-                              : 'bg-white border-slate-200 hover:border-brand-primary hover:shadow-sm'
-                          }`}
-                        >
-                          <div className="flex items-center gap-5">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                              lesson.isCompleted ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-[#5c6e7a]'
-                            }`}>
-                              {lesson.isCompleted
-                                ? <CheckCircle2 size={20} />
-                                : lesson.type === 'Concept'
-                                  ? <BookOpen size={20} />
-                                  : <Code2 size={20} />
-                              }
-                            </div>
-                            <div>
-                              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-1">
-                                Part {lIdx + 1} • {lesson.type}
-                              </span>
-                              <h4 className={`text-[16px] font-bold ${
-                                lesson.isCompleted ? 'text-slate-500 line-through decoration-slate-300' : 'text-[#1e2330]'
-                              }`}>
-                                {lesson.title}
-                              </h4>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-4">
-                            <span className="text-[12px] font-bold text-slate-400">+{lesson.points} XP</span>
-                            <ChevronRight size={18} className="text-slate-300" />
-                          </div>
-                        </div>
-                      ))}
+                    <div className="flex-1 space-y-2 text-left">
+                      <h3 className={`text-[20px] font-medium ${lesson.isCompleted ? 'text-slate-700' : 'text-[#1e2330]'}`}>
+                        {lesson.title}
+                      </h3>
+                      <div className="text-[14px] text-slate-500 font-medium flex items-center gap-2">
+                        {lesson.isCompleted && <CheckCircle2 size={16} className="text-emerald-500" />}
+                        <span className="uppercase tracking-widest text-[11px] font-bold">{lesson.type}</span>
+                        <span>•</span>
+                        <span>Part {lIdx + 1}</span>
+                        <span>•</span>
+                        <span>+{lesson.points} XP</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 shrink-0">
+                      <button className={`px-6 py-2.5 rounded-md text-[15px] transition active:scale-95 min-w-[150px] font-medium ${
+                        lesson.isCompleted ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-white border border-slate-300 text-slate-700 hover:border-slate-800 hover:bg-slate-50'
+                      }`}>
+                        {lesson.isCompleted ? 'Review' : lesson.type === 'Concept' ? 'Start Lesson' : 'Solve Challenge'}
+                      </button>
                     </div>
                   </motion.div>
-                )}
-              </AnimatePresence>
+                ))}
+              </div>
 
             </div>
           ))}
-        </main>
+        </div>
       </div>
 
     </div>

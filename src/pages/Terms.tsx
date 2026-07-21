@@ -1,259 +1,183 @@
-import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  FileText, Calendar, ShieldCheck, ArrowLeft, 
-  Terminal, Cpu, Award, AlertTriangle, Scale,
-  Download, Printer, ChevronRight 
-} from 'lucide-react';
+import { Shield, FileText, CheckCircle2, ChevronRight, AlertCircle, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-const SECTIONS = [
+const TERMS_SECTIONS = [
   {
-    id: "acceptance",
-    num: "1",
-    title: "Acceptance of Terms",
-    icon: Scale,
-    color: "from-blue-500 to-indigo-500",
-    bg: "bg-blue-50/50 border-blue-100 text-blue-700",
-    desc: "By registering an account, accessing compiler runtimes, participating in timed coding contests, or utilizing AI-mentoring modules on the Glintspark website, you agree to comply with and be bound by these Terms of Service.",
-    callout: "If you do not agree to compile code in isolated sandboxes or adhere to code integrity rules, please do not utilize our compilers."
+    title: "1. Definitions",
+    items: [
+      "GlintSpark refers to the online placement training and learning platform.",
+      "Client refers to educational institutions, colleges, universities, training organizations, or corporate partners.",
+      "Student refers to any registered learner.",
+      "User refers collectively to students, institutions, trainers, and visitors."
+    ]
   },
   {
-    id: "conduct",
-    num: "2",
-    title: "Code Integrity & Conduct",
-    icon: Terminal,
-    color: "from-purple-500 to-pink-500",
-    bg: "bg-purple-50/50 border-purple-100 text-purple-700",
-    desc: "Glintspark is a platform dedicated to genuine skill acquisition. Copying solutions, using automated bots to submit code, utilizing unauthorized external generative models during timed assessments, or trying to inject malicious packages into compilation runtimes is strictly prohibited. Submissions are continuously analyzed for plagiarism.",
-    callout: "Glintspark leverages behavioral submission analytics to check code structure integrity and detect automated scraping or external copy-pastes."
+    title: "2. Eligibility",
+    items: [
+      "Users must provide accurate registration information.",
+      "Students below the legally permitted age should use the platform with appropriate parental or institutional consent."
+    ]
   },
   {
-    id: "sandbox-policy",
-    num: "3",
-    title: "Sandbox Runtime Caps",
-    icon: Cpu,
-    color: "from-emerald-500 to-teal-500",
-    bg: "bg-emerald-50/50 border-emerald-100 text-emerald-700",
-    desc: "To guarantee blazing-fast performance and prevent denial-of-service, all free and premium developer compilation runtimes are subject to fair-use execution limits (including memory limits, CPU time constraints, and maximum loops). Runtimes detected running mining scripts or network scans will be terminated immediately.",
-    callout: "Standard sandbox executions have a hard limit of 5.0 seconds of CPU execution time and 512MB of RAM allocation."
+    title: "3. Academic Institution (Client) Terms",
+    items: [
+      "Use the platform only for educational and placement purposes.",
+      "Protect institutional login credentials.",
+      "Do not copy, resell, or redistribute GlintSpark content without written permission.",
+      "Pay applicable subscription or service fees on time.",
+      "Respect GlintSpark intellectual property rights.",
+      "Ensure ethical use by faculty and students."
+    ]
   },
   {
-    id: "certification",
-    num: "4",
-    title: "Verification & Certs",
-    icon: Award,
-    color: "from-amber-500 to-orange-500",
-    bg: "bg-amber-50/50 border-amber-100 text-amber-700",
-    desc: "Glintspark verified certifications represent verified developer achievements. Attempting to bypass proctoring tools, sharing answers, or taking assessments on behalf of other users violates our code of honor and will result in permanent suspension of certifications.",
-    callout: "Suspensions due to verified certification breaches are final and result in removing public recruiter-share badges."
+    title: "4. Student Terms",
+    items: [
+      "Provide genuine information during registration.",
+      "Maintain account confidentiality.",
+      "Do not cheat, plagiarize, or impersonate others.",
+      "Respect trainers and fellow learners.",
+      "Do not upload malicious or copyrighted material."
+    ]
   },
   {
-    id: "liability",
-    num: "5",
-    title: "Limitation of Liability",
-    icon: AlertTriangle,
-    color: "from-rose-500 to-red-500",
-    bg: "bg-rose-50/50 border-rose-100 text-rose-700",
-    desc: "Glintspark runtimes are provided 'as is'. We are not responsible for any bugs in compiling execution drafts or temporary server outages during local practice tracks.",
-    callout: "Compilation results do not guarantee absolute compiler optimization outcomes, and runtime availability is governed by our SLAs."
+    title: "5. Intellectual Property",
+    content: "All courses, videos, assessments, coding problems, graphics, logos, website content, and source code are the intellectual property of GlintSpark unless otherwise stated."
+  },
+  {
+    title: "6. Payments",
+    items: [
+      "Applicable fees are non-transferable.",
+      "Refunds are governed by the GlintSpark Refund Policy.",
+      "Taxes apply according to applicable laws."
+    ]
+  },
+  {
+    title: "7. Code of Conduct",
+    items: [
+      "Do not attempt unauthorized access.",
+      "Do not disrupt platform services.",
+      "Do not share accounts or engage in unlawful activities.",
+      "Violations may result in suspension or termination."
+    ]
+  },
+  {
+    title: "8. Certification",
+    content: "Certificates are issued only after successful completion of eligible programs and verification where applicable."
+  },
+  {
+    title: "9. Placement Disclaimer",
+    content: "GlintSpark provides placement preparation and career guidance but does not guarantee employment or internships. Hiring decisions are made solely by recruiters."
+  },
+  {
+    title: "10. Availability of Services",
+    content: "Services may occasionally be interrupted due to maintenance or unforeseen technical issues."
+  },
+  {
+    title: "11. Privacy",
+    content: "User information is handled according to the GlintSpark Privacy Policy."
+  },
+  {
+    title: "12. Account Suspension",
+    content: "Accounts may be suspended or terminated for fraud, policy violations, misuse, or security threats."
+  },
+  {
+    title: "13. Limitation of Liability",
+    content: "GlintSpark is not liable for indirect or consequential losses arising from platform usage."
+  },
+  {
+    title: "14. Amendments",
+    content: "These Terms & Conditions may be updated periodically. Continued use signifies acceptance of revisions."
+  },
+  {
+    title: "15. Contact",
+    content: "Please contact the GlintSpark support team through the official website for any queries."
   }
 ];
 
 export default function Terms() {
-  const [activeSection, setActiveSection] = useState("acceptance");
-
-  const scrollToSection = (id: string) => {
-    setActiveSection(id);
-    const element = document.getElementById(id);
-    if (element) {
-      const headerOffset = 100;
-      const elementPosition = element.getBoundingClientRect().top;
-      const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-      window.scrollTo({
-        top: offsetPosition,
-        behavior: "smooth"
-      });
-    }
-  };
-
-  const handlePrint = () => {
-    window.print();
-  };
-
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 relative pb-32">
-      {/* Decorative background gradients */}
-      <div className="absolute top-0 right-0 w-[50%] h-[400px] bg-indigo-100/30 blur-[130px] rounded-full pointer-events-none" />
-      <div className="absolute top-[400px] left-0 w-[40%] h-[500px] bg-emerald-50/30 blur-[120px] rounded-full pointer-events-none" />
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden pt-24 pb-32">
+      
+      {/* Decorative background glow */}
+      <div className="absolute top-0 right-0 w-[55%] h-[500px] bg-indigo-100/30 blur-[130px] rounded-full pointer-events-none" />
+      <div className="absolute top-[400px] left-0 w-[45%] h-[500px] bg-emerald-50/20 blur-[120px] rounded-full pointer-events-none" />
 
-      {/* Main Banner Header */}
-      <div className="pt-32 pb-12 relative z-10 border-b border-slate-200 bg-white/60 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-6">
-          <Link to="/" className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors mb-6 group">
-            <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" /> Back to Home
-          </Link>
-          
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm">
-                <FileText size={24} />
-              </div>
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600">User Conduct & Rules</span>
-                <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight mt-0.5">Terms of Service</h1>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold shadow-sm">
-                <Calendar size={13} /> Last Updated: June 2026
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-xl text-xs font-bold shadow-sm">
-                <ShieldCheck size={13} /> Active & Enforced
-              </span>
-            </div>
+      {/* Hero Section */}
+      <section className="pt-16 pb-12 relative z-10 px-6">
+        <div className="max-w-4xl mx-auto space-y-6 text-center">
+          <div className="w-16 h-16 bg-white border border-slate-200 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+            <Shield size={32} className="text-indigo-600" />
           </div>
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 border border-indigo-100 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-wider">
+            <Sparkles size={11} /> Legal Documents
+          </span>
+          <h1 className="text-4xl md:text-5xl font-black tracking-tight text-slate-900 leading-tight">
+            Terms & <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-brand-primary">Conditions</span>
+          </h1>
+          <p className="text-slate-500 font-bold max-w-2xl mx-auto text-base tracking-wider uppercase">
+            Effective Date: <span className="text-indigo-600">July 2026</span>
+          </p>
         </div>
-      </div>
+      </section>
 
-      {/* Two Column Workspace */}
-      <div className="max-w-7xl mx-auto px-6 mt-16 relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
+      {/* Main Content */}
+      <section className="relative z-10 max-w-4xl mx-auto px-6">
+        <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 md:p-14 shadow-xl shadow-slate-200/40 relative overflow-hidden">
           
-          {/* Left Column - Sticky Sidebar navigation */}
-          <div className="lg:col-span-4 sticky top-28 space-y-6 hidden lg:block">
-            <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm">
-              <h2 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Table of Contents</h2>
-              
-              <div className="space-y-1">
-                {SECTIONS.map((sec) => {
-                  const Icon = sec.icon;
-                  const isActive = activeSection === sec.id;
-                  return (
-                    <button
-                      key={sec.id}
-                      onClick={() => scrollToSection(sec.id)}
-                      className={`w-full flex items-center justify-between p-3.5 rounded-2xl text-left transition-all ${
-                        isActive 
-                          ? "bg-indigo-50/80 border border-indigo-100 text-indigo-700 font-extrabold shadow-sm"
-                          : "text-slate-500 hover:bg-slate-50 hover:text-slate-800 border border-transparent font-medium"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
-                          isActive ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-400"
-                        }`}>
-                          <Icon size={15} />
-                        </div>
-                        <span className="text-xs">{sec.title}</span>
-                      </div>
-                      <ChevronRight size={14} className={`opacity-60 transition-transform ${isActive ? "translate-x-0.5" : ""}`} />
-                    </button>
-                  );
-                })}
-              </div>
+          <div className="prose prose-slate max-w-none">
+            <p className="text-lg font-medium text-slate-600 leading-relaxed mb-12">
+              Welcome to GlintSpark. By accessing or using our platform, you agree to comply with these Terms & Conditions.
+            </p>
 
-              {/* Utility buttons */}
-              <div className="grid grid-cols-2 gap-3 pt-6 mt-6 border-t border-slate-100">
-                <button 
-                  onClick={handlePrint}
-                  className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold rounded-xl text-xs transition border border-slate-200"
-                >
-                  <Printer size={13} /> Print Rules
-                </button>
-                <a 
-                  href="#" 
-                  onClick={(e) => { e.preventDefault(); window.print(); }}
-                  className="flex items-center justify-center gap-1.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition shadow-sm"
-                >
-                  <Download size={13} /> PDF Version
-                </a>
-              </div>
-            </div>
-
-            <div className="p-5 bg-gradient-to-tr from-slate-900 to-indigo-950 text-white rounded-3xl border border-slate-800 relative overflow-hidden shadow-lg">
-              <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 to-transparent pointer-events-none" />
-              <h3 className="text-sm font-black tracking-tight mb-2">Code of Honor Questions?</h3>
-              <p className="text-slate-400 text-xs leading-relaxed font-medium mb-4">
-                Reach out to our compliance panel to report plagiarism or review a compilation termination appeal.
-              </p>
-              <a href="mailto:support@glintspark.com" className="text-indigo-400 hover:text-indigo-300 text-xs font-bold inline-flex items-center gap-1">
-                Contact Compliance Team <ChevronRight size={12} />
-              </a>
-            </div>
-          </div>
-
-          {/* Right Column - Terms Content Details */}
-          <div className="lg:col-span-8 space-y-12">
-            
-            {/* Introductory Statement */}
-            <div className="bg-indigo-50/40 border border-indigo-100/60 rounded-3xl p-6 sm:p-8">
-              <h2 className="text-lg font-indigo-950 font-black mb-2">Glintspark's User Agreement</h2>
-              <p className="text-slate-650 text-slate-500 text-sm font-medium leading-relaxed">
-                By entering the website, using our online IDE compilers, or signing up for assessment sessions, you agree to compile only authorized packages and respect academic honesty guidelines as outlined below.
-              </p>
-            </div>
-
-            {/* Sections cards */}
-            <div className="space-y-8">
-              {SECTIONS.map((sec) => {
-                const Icon = sec.icon;
-                return (
-                  <motion.div
-                    key={sec.id}
-                    id={sec.id}
-                    initial={{ opacity: 0, y: 15 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true, margin: "-100px" }}
-                    className="bg-white border border-slate-200/80 rounded-3xl p-8 shadow-sm hover:border-slate-300 transition-all scroll-mt-28"
-                  >
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${sec.color} flex items-center justify-center text-white shadow-sm`}>
-                        <Icon size={18} />
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Section {sec.num}</span>
-                        <h3 className="text-xl font-black text-slate-900">{sec.title}</h3>
-                      </div>
-                    </div>
-
-                    <p className="text-slate-650 text-slate-600 text-sm leading-relaxed font-semibold mb-6">
-                      {sec.desc}
+            <div className="space-y-12">
+              {TERMS_SECTIONS.map((section, idx) => (
+                <div key={idx} className="scroll-mt-32">
+                  <h3 className="text-xl font-black text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-3">
+                    <FileText size={20} className="text-indigo-400" />
+                    {section.title}
+                  </h3>
+                  
+                  {section.content ? (
+                    <p className="text-slate-600 font-medium leading-relaxed pl-8">
+                      {section.content}
                     </p>
-
-                    {/* Rich Callout Alert */}
-                    <div className={`p-4 border rounded-2xl text-xs font-semibold leading-relaxed ${sec.bg}`}>
-                      <p className="flex items-start gap-2">
-                        <span className="inline-block mt-0.5">•</span>
-                        <span>{sec.callout}</span>
-                      </p>
-                    </div>
-                  </motion.div>
-                );
-              })}
+                  ) : (
+                    <ul className="space-y-3 pl-8">
+                      {section.items?.map((item, i) => (
+                        <li key={i} className="flex items-start gap-3 text-slate-600 font-medium leading-relaxed">
+                          <CheckCircle2 size={18} className="text-emerald-500 shrink-0 mt-0.5" />
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
             </div>
 
-            {/* Print/Download for small screen fallback */}
-            <div className="lg:hidden flex gap-3">
-              <button 
-                onClick={handlePrint}
-                className="flex-1 flex items-center justify-center gap-1.5 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-2xl text-xs transition"
-              >
-                <Printer size={14} /> Print Terms
-              </button>
-              <button 
-                onClick={handlePrint}
-                className="flex-1 flex items-center justify-center gap-1.5 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl text-xs transition shadow-sm"
-              >
-                <Download size={14} /> Download PDF
-              </button>
+            <div className="mt-16 bg-slate-900 text-white rounded-3xl p-8 relative overflow-hidden shadow-xl">
+              <div className="absolute -top-12 -right-12 w-32 h-32 bg-brand-primary/20 blur-[40px] rounded-full pointer-events-none" />
+              <h3 className="text-lg font-black mb-4 relative z-10 flex items-center gap-2">
+                <AlertCircle size={20} className="text-brand-light" />
+                Acceptance
+              </h3>
+              <p className="text-slate-300 font-medium leading-relaxed relative z-10">
+                By registering or using GlintSpark, users acknowledge that they have read, understood, and agreed to these Terms & Conditions.
+              </p>
+              
+              <div className="mt-8 pt-6 border-t border-slate-800 relative z-10 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">End of Document</span>
+                <Link to="/contact" className="text-brand-light font-bold text-sm flex items-center gap-1 hover:text-white transition-colors">
+                  Contact Support <ChevronRight size={16} />
+                </Link>
+              </div>
             </div>
 
           </div>
-
         </div>
-      </div>
+      </section>
+
     </div>
   );
 }

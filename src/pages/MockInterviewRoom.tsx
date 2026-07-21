@@ -223,7 +223,8 @@ export default function MockInterviewRoom() {
     const token = session?.access_token;
     if (!token) throw new Error("No active session. Please sign in to use the AI interviewer.");
 
-    const response = await fetch(`http://localhost:8080/api/ai/chat`, {
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+    const response = await fetch(`${apiUrl}/api/ai/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

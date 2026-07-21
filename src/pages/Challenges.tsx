@@ -3,14 +3,18 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Filter, Code2, Zap, CheckCircle2, ChevronRight, Star, Hexagon, Globe, ArrowRight, AlertCircle, ArrowLeft, Terminal, Cpu, Database, Braces, X } from 'lucide-react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { supabase } from '../services/supabaseService';
+import { supabase, supabaseDB } from '../services/supabaseService';
 import { firebaseDB } from '../services/firebaseService';
 import { useChallenges } from '../contexts/ChallengesContext';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Challenges() {
   const navigate = useNavigate();
   const { topic } = useParams<{ topic?: string }>();
-  const [solvedIds, setSolvedIds] = useState<string[]>([]);
+  const [solvedSubmissions, setSolvedSubmissions] = useState<{challengeId: string, language: string}[]>([]);
+  const [realRank, setRealRank] = useState<number | null>(null);
+  const [challengeStats, setChallengeStats] = useState<Record<string, string>>({});
+  const { user } = useAuth();
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
     try {
       const stored = localStorage.getItem('glintspark_bookmarks');
@@ -31,27 +35,37 @@ export default function Challenges() {
 
   useEffect(() => {
     async function fetchSolved() {
-      const { data: userData } = await supabase.auth.getUser();
-      if (userData?.user) {
+      try {
+        const stats = await supabaseDB.getGlobalChallengeStats();
+        setChallengeStats(stats);
+      } catch (err) {
+        console.error("Failed to load global challenge stats", err);
+      }
+
+      if (user) {
         try {
-          const dbSolved = await firebaseDB.getUserSubmissions(userData.user.id);
+          const dbSolved = await supabaseDB.getUserSubmissions(user._id);
           if (dbSolved) {
-            setSolvedIds(dbSolved.map((d: any) => d.challengeId));
+            setSolvedSubmissions(dbSolved.filter((d: any) => d.status === 'PASS').map((d: any) => ({ challengeId: d.challengeId, language: d.language || '' })));
           }
+          const rank = await supabaseDB.getUserRank(user.xp || 0);
+          setRealRank(rank);
         } catch (err) {
-          console.error("Failed to load solved status from Firestore:", err);
+          console.error("Failed to load solved status from Supabase:", err);
         }
       }
     }
     fetchSolved();
-  }, []);
+  }, [user]);
 
   // Find active track details
   const activeTrack = practiceTracks.find(t => t.id === topic);
 
   // If topic is specified but not found, redirect to challenges catalog
   const challenges = activeTrack 
-    ? allChallenges.filter(c => c.track === activeTrack.id).map((c, idx) => ({ ...c, originalIndex: idx + 1, status: solvedIds.includes(c.id) ? 'Solved' : 'Open' })) 
+    ? allChallenges
+        .filter(c => c.isPractice !== false && (c.tracks ? c.tracks.includes(activeTrack.id) : c.track === activeTrack.id))
+        .map((c, idx) => ({ ...c, originalIndex: idx + 1, status: solvedSubmissions.some(s => s.challengeId === c.id && (!s.language || s.language.replace(/[^a-zA-Z+#]/g, '').toLowerCase() === activeTrack.name.replace(/[^a-zA-Z+#]/g, '').toLowerCase())) ? 'Solved' : 'Open' })) 
     : [];
 
   // STAR LOGIC CALCULATION for active topic
@@ -131,7 +145,7 @@ export default function Challenges() {
   const allSubdomains = Array.from(new Set(computedAllChallenges.map(c => c.category)));
 
   const filteredAll = computedAllChallenges.filter(c => {
-    const isSolved = solvedIds.includes(c.id);
+    const isSolved = solvedSubmissions.some(s => s.challengeId === c.id);
     const computedStatus = isSolved ? 'Solved' : 'Open';
     if (catalogSearch.trim()) {
       const query = catalogSearch.toLowerCase().trim();
@@ -164,13 +178,13 @@ export default function Challenges() {
             </div>
             {/* Search */}
             <div className="relative group w-full md:w-80">
-              <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-primary transition-colors" />
-              <input
-                type="text"
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <input 
+                type="text" 
                 value={catalogSearch}
                 onChange={e => setCatalogSearch(e.target.value)}
-                placeholder="Search challenges..."
-                className="pl-10 pr-4 py-2.5 w-full bg-[#f3f7f7] border border-slate-200 rounded text-sm focus:bg-white focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary outline-none transition-all"
+                placeholder="Search practice..." 
+                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-md text-[13px] focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all placeholder:text-slate-400 font-medium"
               />
             </div>
           </div>
@@ -227,7 +241,7 @@ export default function Challenges() {
 
             <div className="space-y-3">
               {filteredAll.length > 0 ? filteredAll.map((prob, i) => {
-                const isSolved = solvedIds.includes(prob.id);
+                const isSolved = solvedSubmissions.some(s => s.challengeId === prob.id);
                 return (
                   <motion.div
                     key={`${prob.languageId}-${prob.id}`}
@@ -247,7 +261,7 @@ export default function Challenges() {
                         <span className={prob.difficulty === 'Easy' ? 'text-[#1ba94c]' : prob.difficulty === 'Medium' ? 'text-amber-500' : 'text-rose-600'}>
                           {prob.difficulty}
                         </span>
-                        , {prob.category}, Max Score: {prob.points}, Success Rate: {prob.successRate}
+                        , {prob.category}, Max Score: {prob.points}, Success Rate: {challengeStats[prob.id] || '0%'}
                       </div>
                     </div>
 
@@ -260,16 +274,16 @@ export default function Challenges() {
                       {isSolved ? (
                         <button
                           onClick={() => navigate(`/challenges/${prob.id}`, { state: { isProctored: false } })}
-                          className="flex items-center gap-2 text-emerald-600 font-bold text-[11px] uppercase tracking-widest min-w-[160px] justify-center border border-emerald-500/30 hover:border-emerald-500 hover:bg-emerald-50/30 rounded-[4px] px-7 py-2.5 transition active:scale-95 cursor-pointer"
+                          className="flex items-center gap-2 bg-[#0e141e] hover:bg-[#1e2736] text-white font-black text-[11px] uppercase tracking-widest min-w-[160px] justify-center rounded-[4px] px-7 py-2.5 transition active:scale-95 cursor-pointer"
                         >
-                          <CheckCircle2 size={15} className="text-emerald-500" /> Solved
+                          <CheckCircle2 size={15} className="text-white" /> Solved
                         </button>
                       ) : (
                         <button
                           onClick={() => navigate(`/challenges/${prob.id}`, { state: { isProctored: false } })}
                           className="px-7 py-2.5 bg-brand-primary text-white rounded-[4px] text-[11px] font-black uppercase tracking-widest hover:bg-brand-dark transition active:scale-95 min-w-[160px] text-center"
                         >
-                          Solve Challenge
+                          Solve Problem
                         </button>
                       )}
                     </div>
@@ -334,13 +348,13 @@ export default function Challenges() {
                          <motion.div 
                            initial={{ width: 0 }} 
                            animate={{ width: starData.level === 6 ? '100%' : `${(starData.current / starData.next!) * 100}%` }} 
-                           className="h-full bg-[#1ba94c] rounded-full" 
+                           className="h-full bg-[#0e141e] rounded-full" 
                          />
                       </div>
  
                       <div className="flex items-center justify-between text-[15px] text-[#5c6e7a]">
                          <div>
-                            Rank: <span className="font-bold text-[#39424e]">6311961</span> <span className="text-[#c2c7d0] mx-1.5">|</span> Points: <span className="font-bold text-[#39424e]">{starData.current}/{starData.next || 'MAX'}</span>
+                            Rank: <span className="font-bold text-[#39424e]">{realRank === null ? "..." : realRank.toLocaleString()}</span> <span className="text-[#c2c7d0] mx-1.5">|</span> Points: <span className="font-bold text-[#39424e]">{starData.current}/{starData.next || 'MAX'}</span>
                          </div>
                          <AlertCircle onClick={() => navigate('/scoring-rules')} size={20} className="text-[#738f93] fill-[#738f93]/20 hover:text-[#5c6e7a] cursor-pointer transition-colors" />
                       </div>
@@ -509,7 +523,7 @@ export default function Challenges() {
             <div className="space-y-4">
               {filteredChallenges.length > 0 ? (
                 filteredChallenges.map((prob, i) => {
-                  const isSolved = prob.status === 'Solved' || solvedIds.includes(prob.id);
+                  const isSolved = prob.status === 'Solved' || solvedSubmissions.some(s => s.challengeId === prob.id && (!s.language || activeTrack && s.language.toLowerCase() === activeTrack.name.toLowerCase()));
                   return (
                     <motion.div 
                       initial={{ opacity: 0, y: 10 }}
@@ -529,7 +543,7 @@ export default function Challenges() {
                             <span className={prob.difficulty === 'Easy' ? 'text-[#1ba94c]' : prob.difficulty === 'Medium' ? 'text-amber-500' : 'text-rose-600'}>
                               {prob.difficulty}
                             </span>
-                            , {prob.category}, Max Score: {prob.points}, Success Rate: {prob.successRate}
+                            , {prob.category}, Max Score: {prob.points}, Success Rate: {challengeStats[prob.id] || '0%'}
                           </div>
                        </div>
 
@@ -539,12 +553,21 @@ export default function Challenges() {
                              onClick={(e) => { e.stopPropagation(); toggleBookmark(prob.id); }}
                              className={`cursor-pointer transition ${bookmarkedIds.includes(prob.id) ? 'text-amber-400 fill-amber-400' : 'text-slate-300 fill-current hover:text-amber-400'}`} 
                           />
-                          <button 
-                            onClick={() => navigate(`/challenges/${prob.id}`, { state: { isProctored: true } })}
-                            className="px-6 py-2.5 bg-[#4f46e5] text-white rounded-md text-[15px] hover:bg-[#3730a3] transition active:scale-95 min-w-[150px]"
-                          >
-                             {isSolved ? 'Solve Again' : 'Solve Challenge'}
-                          </button>
+                          {isSolved ? (
+                            <button
+                              onClick={() => navigate(`/challenges/${prob.id}`, { state: { isProctored: true } })}
+                              className="flex items-center gap-2 bg-[#0e141e] hover:bg-[#1e2736] text-white font-black text-[11px] uppercase tracking-widest min-w-[160px] justify-center rounded-[4px] px-7 py-2.5 transition active:scale-95 cursor-pointer"
+                            >
+                              <CheckCircle2 size={15} className="text-white" /> Solved
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={() => navigate(`/challenges/${prob.id}`, { state: { isProctored: true } })}
+                              className="px-6 py-2.5 bg-[#4f46e5] text-white rounded-md text-[15px] hover:bg-[#3730a3] transition active:scale-95 min-w-[160px]"
+                            >
+                               Solve Challenge
+                            </button>
+                          )}
                        </div>
                     </motion.div>
                   );

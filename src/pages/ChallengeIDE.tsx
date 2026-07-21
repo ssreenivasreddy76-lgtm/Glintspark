@@ -1,75 +1,31 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import {
-  RotateCcw, ChevronDown, ChevronLeft,
-  Maximize2, Upload, Lock, Trophy, Clock, CheckCircle2, MessageSquare, Terminal, Sparkles
-} from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { executeWithWaterfall, type ExecutionResult } from '../services/executionService';
+import { Play, Check, ChevronLeft, ChevronRight, Settings, Layout, Maximize2, Terminal, Code2, AlertTriangle, RotateCcw, ChevronDown, Lock, Trophy, Clock, CheckCircle2, MessageSquare, Sparkles, Upload } from 'lucide-react';
 import MonacoEditor from '@monaco-editor/react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { supabase } from '../services/supabaseService';
+import { supabase, supabaseDB } from '../services/supabaseService';
 import { firebaseDB } from '../services/firebaseService';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useChallenges } from '../contexts/ChallengesContext';
+import { useAuth } from '../contexts/AuthContext';
 import confetti from 'canvas-confetti';
 import * as tf from '@tensorflow/tfjs';
 import * as cocoSsd from '@tensorflow-models/coco-ssd';
-
-// ─── Language Config ───────────────────────────────────────────────
 const LANGUAGES = [
-  { label: 'Python 3',    id: 71, ext: 'py',   runtime: 'python',     version: '3.10.0',  starter: `# Write your solution here\n\ndef solve():\n    pass\n\nsolve()\n` },
-  { label: 'JavaScript',  id: 63, ext: 'js',   runtime: 'javascript', version: '18.15.0', starter: `// Write your solution here\n\nfunction solve() {\n\n}\n\nsolve();\n` },
-  { label: 'C++',         id: 54, ext: 'cpp',  runtime: 'c++',        version: '10.2.0',  starter: `#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // Write your solution here\n    return 0;\n}\n` },
-  { label: 'Java',        id: 62, ext: 'java', runtime: 'java',       version: '15.0.2',  starter: `import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        // Write your solution here\n    }\n}\n` },
-  { label: 'C',           id: 50, ext: 'c',    runtime: 'c',          version: '10.2.0',  starter: `#include <stdio.h>\n\nint main() {\n    // Write your solution here\n    return 0;\n}\n` },
+  { label: 'Python 3',    id: 71, ext: 'py',   runtime: 'python',     monaco: 'python',     version: '3.10.0',  starter: `# Write your solution here\n\ndef solve():\n    pass\n\nsolve()\n` },
+  { label: 'JavaScript',  id: 63, ext: 'js',   runtime: 'javascript', monaco: 'javascript', version: '18.15.0', starter: `// Write your solution here\n\nfunction solve() {\n\n}\n\nsolve();\n` },
+  { label: 'C++',         id: 54, ext: 'cpp',  runtime: 'c++',        monaco: 'cpp',        version: '10.2.0',  starter: `#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    // Write your solution here\n    return 0;\n}\n` },
+  { label: 'Java',        id: 62, ext: 'java', runtime: 'java',       monaco: 'java',       version: '15.0.2',  starter: `import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        // Write your solution here\n    }\n}\n` },
+  { label: 'C',           id: 50, ext: 'c',    runtime: 'c',          monaco: 'c',          version: '10.2.0',  starter: `#include <stdio.h>\n\nint main() {\n    // Write your solution here\n    return 0;\n}\n` },
+  { label: 'C#',          id: 51, ext: 'cs',   runtime: 'csharp',     monaco: 'csharp',     version: '5.0.201', starter: `using System;\n\nclass Program {\n    static void Main() {\n        // Write your solution here\n    }\n}\n` },
 ];
 
 // ─── Piston API ────────────────────────────────────────────────────
 const PISTON_URL = import.meta.env.VITE_PISTON_URL || 'https://emkc.org/api/v2/piston/execute';
 const PISTON_TOKEN = import.meta.env.VITE_PISTON_TOKEN || '';
 
-async function runCode(languageId: number, code: string, stdin = ''): Promise<{ stdout: string; stderr: string; status: string }> {
-  const lang = LANGUAGES.find(l => l.id === languageId);
-  if (!lang) throw new Error('Unknown language');
-
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-  if (!token) throw new Error('You must be logged in to execute code.');
-
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8080';
-  const res = await fetch(`${apiUrl}/api/execute`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    },
-    body: JSON.stringify({
-      language: lang.runtime,
-      version: lang.version,
-      files: [{ name: `solution.${lang.ext}`, content: code }],
-      stdin,
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    let cleanMessage = errText;
-    try {
-      const parsed = JSON.parse(errText);
-      if (parsed.error) cleanMessage = parsed.error;
-    } catch (e) {}
-    
-    if (res.status === 429) {
-      throw new Error(cleanMessage); // Clean rate limit message
-    }
-    throw new Error(`Execution error: ${res.status} - ${cleanMessage}`);
-  }
-  
-  const data = await res.json();
-  const run = data.run;
-  return {
-    stdout: run.stdout || '',
-    stderr: run.stderr || '',
-    status: run.code === 0 ? 'Accepted' : 'Error',
-  };
+async function runCode(languageId: number, code: string, stdin = ''): Promise<ExecutionResult> {
+  return await executeWithWaterfall(languageId, code, stdin);
 }
 
 // ─── Problem Map ───────────────────────────────────────────────────
@@ -78,6 +34,8 @@ type ProblemDefinition = {
   difficulty: string;
   points: number;
   description: string;
+  inputFormat?: string;
+  outputFormat?: string;
   examples: Array<{ input: string; output: string; explanation?: string }>;
   constraints: string[];
   testCases: Array<{ input: string; expected: string }>;
@@ -109,27 +67,62 @@ export default function ChallengeIDE() {
     if (!reqId) return PROBLEMS.default;
     const fromCtx = challenges.find((c) => c.id === reqId);
     
+    if (fromCtx) {
+      // Map context to IDE format
+      const examples = [];
+      if (fromCtx.sampleInput1 || fromCtx.sampleOutput1) {
+        examples.push({ input: fromCtx.sampleInput1 || '', output: fromCtx.sampleOutput1 || '', explanation: fromCtx.explanation1 });
+      }
+      if (fromCtx.sampleInput2 || fromCtx.sampleOutput2) {
+        examples.push({ input: fromCtx.sampleInput2 || '', output: fromCtx.sampleOutput2 || '', explanation: fromCtx.explanation2 });
+      }
+
+      // Convert constraints string to array
+      let parsedConstraints: string[] = [];
+      if (typeof fromCtx.constraints === 'string' && fromCtx.constraints.trim()) {
+        parsedConstraints = fromCtx.constraints.split('\n').map(s => s.trim()).filter(Boolean);
+      } else if (Array.isArray(fromCtx.constraints)) {
+        parsedConstraints = fromCtx.constraints;
+      }
+
+      return {
+        title: fromCtx.title,
+        difficulty: fromCtx.difficulty || 'Easy',
+        points: fromCtx.points || 10,
+        description: fromCtx.description || '',
+        inputFormat: fromCtx.inputFormat,
+        outputFormat: fromCtx.outputFormat,
+        examples: examples,
+        constraints: parsedConstraints,
+        testCases: examples.map(e => ({ input: e.input, expected: e.output })), // Temporary until execution engine is built
+        track: fromCtx.track,
+      };
+    }
+    
+    // Fallback for hardcoded problems
     return PROBLEMS[reqId] ?? {
       ...PROBLEMS.default,
-      title: fromCtx?.title || reqId.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-      points: fromCtx?.points || 10,
-      difficulty: fromCtx?.difficulty || 'Easy',
-      description: fromCtx?.description || PROBLEMS.default.description,
-      track: fromCtx?.track,
+      title: String(reqId).split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
     };
   };
 
   const problem = getProblem(id);
 
-  const allowedLangs = React.useMemo(() => {
-    if (!problem.track) return LANGUAGES;
-    const t = problem.track.toLowerCase();
-    if (t === 'javascript') return LANGUAGES.filter(l => l.id === 63);
-    if (t === 'python') return LANGUAGES.filter(l => l.id === 71);
-    if (t === 'java') return LANGUAGES.filter(l => l.id === 62);
-    if (t === 'c') return LANGUAGES.filter(l => l.id === 50 || l.id === 54);
-    return LANGUAGES;
-  }, [problem.track]);
+  const handleNextChallenge = () => {
+    const currentProblemCtx = challenges.find((c) => c.id === id);
+    const trackChallenges = currentProblemCtx ? challenges.filter(c => c.track === currentProblemCtx.track && c.isPractice !== false) : challenges;
+    const currentIndex = trackChallenges.findIndex(c => c.id === id);
+    const nextProblem = currentIndex >= 0 && currentIndex < trackChallenges.length - 1 ? trackChallenges[currentIndex + 1] : null;
+
+    if (nextProblem) {
+      // Force page reload to ensure completely clean IDE state
+      window.location.href = `/challenges/${nextProblem.id}${isFromContest ? '?contest=true' : ''}`;
+    } else {
+      navigate(isFromContest ? '/contests' : '/practice');
+    }
+  };
+
+  const allowedLangs = LANGUAGES;
 
   const [lang, setLang] = useState(allowedLangs[0] || LANGUAGES[0]);
   const [code, setCode] = useState(lang.starter);
@@ -145,7 +138,7 @@ export default function ChallengeIDE() {
   const [editorTheme, setEditorTheme] = useState<string>('vs-dark');
   const [showFontSizeMenu, setShowFontSizeMenu] = useState(false);
   const [editorFontSize, setEditorFontSize] = useState(14);
-  const [activeTab, setActiveTab] = useState<'Problem' | 'Submissions' | 'Leaderboard' | 'Discussions' | 'Editorial' | 'AI Tutor'>('Problem');
+  const [activeTab, setActiveTab] = useState<'Problem' | 'Submissions' | 'Leaderboard' | 'Discussions' | 'Editorial' | 'Glintspark AI'>('Problem');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const editorRef = useRef<any>(null);
 
@@ -175,6 +168,9 @@ export default function ChallengeIDE() {
   const [isLoadingTab, setIsLoadingTab] = useState(false);
 
   const location = useLocation();
+  const { user } = useAuth();
+  
+  // Try to find the problem from Supabase data first
   const shouldProctor = location.state?.isProctored ?? false;
 
   // --- PROCTORING FEATURES ---
@@ -190,7 +186,7 @@ export default function ChallengeIDE() {
 
   // AI Tutor States & Functions (Feature 2)
   const [tutorMessages, setTutorMessages] = useState<Array<{role: 'user'|'model', text: string}>>([
-    { role: 'model', text: "Hello! I'm your AI Code Tutor. Copy or write your code on the editor key, and I can help you find bugs, run time/space complexity analysis, or give you subtle hints without giving away the direct solution." }
+    { role: 'model', text: "Hello! I'm Glintspark AI. Copy or write your code on the editor key, and I can help you find bugs, run time/space complexity analysis, or give you subtle hints without giving away the direct solution." }
   ]);
   const [tutorInput, setTutorInput] = useState('');
   const [isTutorLoading, setIsTutorLoading] = useState(false);
@@ -389,7 +385,9 @@ export default function ChallengeIDE() {
               id: s.submissionId,
               solved_at: s.createdAt,
               language: s.language,
-              code: s.code || ''
+              code: s.code || '',
+              status: s.status || 'PASS',
+              points_earned: s.status === 'PASS' ? problem.points : 0
             }));
             
             setSubmissions(submissionsMapped);
@@ -439,8 +437,16 @@ export default function ChallengeIDE() {
 
   const [isRunning, setIsRunning]   = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [output, setOutput] = useState<{ type: 'run' | 'submit' | 'error'; content: string; passed?: number; total?: number } | null>(null);
+  const [activeTestCase, setActiveTestCase] = useState<number>(0);
+  const [output, setOutput] = useState<{ 
+    type: 'run' | 'submit' | 'error'; 
+    content?: string; 
+    passed?: number; 
+    total?: number;
+    testCases?: Array<{ name: string, input: string, expected: string, actual: string, passed: boolean, stderr?: string }>;
+  } | null>(null);
 
+  const consoleRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -495,52 +501,89 @@ export default function ChallengeIDE() {
   const handleRun = async () => {
     setIsRunning(true);
     setHasRun(true);
+    setActiveTestCase(0);
     setOutput({ type: 'run', content: 'Running code...' });
     try {
-      const result = await runCode(lang.id, code, customInput);
-      const content = result.stderr
-        ? `Runtime Error:\n${result.stderr}`
-        : result.stdout === '__MOCK_PASS__'
-          ? `(Simulated Execution Success)\n\nYour code ran successfully!\nNote: Live compilation is currently running in Demo Mode.`
-          : result.stdout
-            ? `${result.stdout}`
-            : 'Code executed successfully with no output.';
-      setOutput({ type: result.stderr ? 'error' : 'run', content });
+      if (isCustomInput) {
+        const result = await runCode(lang.id, code, customInput);
+        const content = result.stderr
+          ? `Runtime Error:\n${result.stderr}`
+          : result.stdout === '__MOCK_PASS__'
+            ? `(Simulated Execution Success)\n\nYour code ran successfully!\nNote: Live compilation is currently running in Demo Mode.`
+            : result.stdout
+              ? `${result.stdout}`
+              : 'Code executed successfully with no output.';
+        setOutput({ type: result.stderr ? 'error' : 'run', content });
+      } else {
+        const examples = problem.examples || [];
+        if (examples.length === 0) throw new Error("No sample test cases available.");
+        
+        let passedCount = 0;
+        const testCaseResults = [];
+        for (let i = 0; i < examples.length; i++) {
+          const ex = examples[i];
+          const result = await runCode(lang.id, code, ex.input);
+          const actual = (result.stdout || '').trim();
+          const expected = (ex.output || '').trim();
+          const passed = actual === expected || actual === '__MOCK_PASS__';
+          if (passed) passedCount++;
+          
+          testCaseResults.push({
+            name: `Sample Case ${i}`,
+            input: ex.input,
+            expected: expected,
+            actual: actual,
+            passed: passed,
+            stderr: result.stderr
+          });
+        }
+        
+        setOutput({ type: 'run', passed: passedCount, total: examples.length, testCases: testCaseResults });
+      }
     } catch (e: unknown) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       setOutput({ type: 'error', content: `Failed to run: ${errorMsg}` });
     } finally {
       setIsRunning(false);
+      setTimeout(() => {
+        consoleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 100);
     }
   };
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
     setHasRun(true);
-    setOutput({ type: 'submit', content: 'Evaluating on hidden test cases...' });
+    setActiveTestCase(0);
+    setOutput({ type: 'submit', content: 'Evaluating on hidden test cases...', testCases: [] });
     
     try {
       if (!problem.testCases || problem.testCases.length === 0) {
         throw new Error('No test cases defined for this problem.');
       }
 
-      let passed = 0;
-      const results: string[] = [];
+      let passedCount = 0;
+      const testCaseResults = [];
 
-      for (const [i, tc] of problem.testCases.entries()) {
+      for (let i = 0; i < problem.testCases.length; i++) {
+        const tc = problem.testCases[i];
         const result = await runCode(lang.id, code, tc.input);
         const actual = (result.stdout || '').trim();
         const expected = (tc.expected || '').trim();
-        if (actual === expected || actual === '__MOCK_PASS__') {
-          passed++;
-          results.push(`Test Case ${i + 1}: Passed`);
-        } else {
-          results.push(`Test Case ${i + 1}: Failed\nExpected: ${expected}\nOutput: ${actual || result.stderr}`);
-        }
+        const passed = actual === expected || actual === '__MOCK_PASS__';
+        if (passed) passedCount++;
+        
+        testCaseResults.push({
+          name: `Test Case ${i}`,
+          input: tc.input,
+          expected: expected,
+          actual: actual,
+          passed: passed,
+          stderr: result.stderr
+        });
       }
 
-      const allPassed = passed === problem.testCases.length;
-      const content = results.join('\n\n') + `\n\n${allPassed ? 'Accepted' : 'Wrong Answer'}`;
+      const allPassed = passedCount === problem.testCases.length;
 
       if (allPassed) {
         confetti({
@@ -549,41 +592,57 @@ export default function ChallengeIDE() {
           origin: { y: 0.1 },
           colors: ['#4a90e2', '#50e3c2', '#f5a623', '#e74c3c', '#9b59b6']
         });
-        const { data } = await supabase.auth.getUser();
-        if (data?.user) {
-          // Save solution to Firebase Firestore (Google Cloud)
-          try {
-            await firebaseDB.saveSubmission({
-              userId: data.user.id,
-              challengeId: id || 'solve-me-first',
-              code,
-              language: lang.label,
-              status: 'PASS',
-              runtimeMs: 12,
-              memoryKb: 1024
-            });
-          } catch (firebaseErr) {
-            console.error("Failed to save submission to Google Cloud:", firebaseErr);
-          }
+      }
 
-          // Update user XP in Supabase
-          try {
-            const { data: profile } = await supabase.from('users').select('xp').eq('id', data.user.id).single();
-            if (profile) {
-              await supabase.from('users').update({ xp: (profile.xp || 0) + problem.points }).eq('id', data.user.id);
-            }
+      if (user) {
+        try {
+          const subToSave = {
+            userId: user._id,
+            challengeId: id || 'solve-me-first',
+            code,
+            language: lang.label,
+            status: allPassed ? 'PASS' : 'FAIL',
+            runtimeMs: 12,
+            memoryKb: 1024,
+            pointsEarned: allPassed ? problem.points : 0
+            };
+            await supabaseDB.saveSubmission(subToSave);
+            
+            setSubmissions(prev => [{
+              id: Date.now().toString(),
+              solved_at: new Date().toISOString(),
+              language: subToSave.language,
+              points_earned: allPassed ? problem.points : 0,
+              status: subToSave.status
+            }, ...prev]);
           } catch (supabaseErr) {
-            console.error("Failed to update user XP in Supabase:", supabaseErr);
+            console.error("Failed to save submission to Supabase:", supabaseErr);
           }
+      }
+
+      if (allPassed) {
+        // Save to local storage as fallback/immediate UI update regardless of Auth state
+        try {
+          const localSolved = JSON.parse(localStorage.getItem('glintspark_solved') || '[]');
+          const challengeIdToSave = id || 'solve-me-first';
+          if (!localSolved.includes(challengeIdToSave)) {
+            localSolved.push(challengeIdToSave);
+            localStorage.setItem('glintspark_solved', JSON.stringify(localSolved));
+          }
+        } catch (e) {
+          console.error(e);
         }
       }
 
-      setOutput({ type: 'submit', content, passed, total: problem.testCases.length });
+      setOutput({ type: 'submit', passed: passedCount, total: problem.testCases.length, testCases: testCaseResults });
     } catch (e: unknown) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       setOutput({ type: 'error', content: `Submission failed: ${errorMsg}` });
     } finally {
       setIsSubmitting(false);
+      setTimeout(() => {
+        consoleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 100);
     }
   };
 
@@ -629,7 +688,9 @@ export default function ChallengeIDE() {
           <div className="flex px-2 border-b border-slate-200 bg-[#f3f7f7] overflow-x-auto">
             {(isFromContest
               ? (['Problem', 'Submissions', 'Leaderboard', 'Discussions', 'Editorial'] as const)
-              : (['Problem', 'Submissions', 'Discussions', 'AI Tutor'] as const)
+              : (shouldProctor 
+                  ? ['Problem', 'Submissions', 'Discussions'] as const 
+                  : ['Problem', 'Submissions', 'Discussions', 'Glintspark AI'] as const)
             ).map(tab => (
               <button
                 key={tab}
@@ -638,9 +699,9 @@ export default function ChallengeIDE() {
                   activeTab === tab ? 'text-slate-800' : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
-                {tab === 'AI Tutor' ? (
+                {tab === 'Glintspark AI' ? (
                   <span className="flex items-center gap-1">
-                    <Sparkles size={14} className="text-brand-primary" /> AI Tutor
+                    <Sparkles size={14} className="text-brand-primary" /> Glintspark AI
                   </span>
                 ) : tab}
                 {activeTab === tab && (
@@ -662,37 +723,81 @@ export default function ChallengeIDE() {
                   </div>
                 </div>
 
-                <div className="text-[15px] text-[#39424e] leading-[1.6] whitespace-pre-wrap mb-8">
-                  {problem.description}
-                </div>
-
-                {problem.examples && problem.examples.length > 0 && (
-                  <div className="mb-8">
-                    <h3 className="text-[16px] font-bold text-slate-800 mb-3">Sample Input</h3>
-                    <div className="bg-[#f3f7f7] p-4 rounded text-[13px] font-mono text-slate-800 border border-slate-200">
-                      {problem.examples[0].input}
+                <div className="space-y-6">
+                  {problem.description && (
+                    <div className="mb-6">
+                      <div className="text-[16px] font-medium text-[#2d3748] leading-[1.7] whitespace-pre-wrap">{problem.description}</div>
                     </div>
-                    <h3 className="text-[16px] font-bold text-slate-800 mt-6 mb-3">Sample Output</h3>
-                    <div className="bg-[#f3f7f7] p-4 rounded text-[13px] font-mono text-slate-800 border border-slate-200">
-                      {problem.examples[0].output}
-                    </div>
-                  </div>
-                )}
+                  )}
 
-                <div>
-                  <h3 className="text-[16px] font-bold text-slate-800 mb-3">Constraints</h3>
-                  <ul className="list-none space-y-1">
-                    {problem.constraints.map((c: string, i: number) => (
-                      <li key={i} className="text-[14px] font-mono bg-slate-50 inline-block px-2 py-1 rounded border border-slate-200 text-slate-700">{c}</li>
-                    ))}
-                  </ul>
+                  {problem.inputFormat && (
+                    <div className="bg-[#f8fafc] border border-slate-200 rounded-lg p-5">
+                      <h3 className="text-[15px] font-black text-slate-800 mb-3 uppercase tracking-wider">Input Format</h3>
+                      <div className="bg-white p-4 rounded-md text-[15px] font-medium font-mono text-slate-800 border border-slate-200 whitespace-pre-wrap">{problem.inputFormat}</div>
+                    </div>
+                  )}
+
+                  {problem.outputFormat && (
+                    <div className="bg-[#f8fafc] border border-slate-200 rounded-lg p-5">
+                      <h3 className="text-[15px] font-black text-slate-800 mb-3 uppercase tracking-wider">Output Format</h3>
+                      <div className="bg-white p-4 rounded-md text-[15px] font-medium font-mono text-slate-800 border border-slate-200 whitespace-pre-wrap">{problem.outputFormat}</div>
+                    </div>
+                  )}
+
+                  {problem.constraints && problem.constraints.length > 0 && (
+                    <div className="bg-[#f8fafc] border border-slate-200 rounded-lg p-5">
+                      <h3 className="text-[15px] font-black text-slate-800 mb-3 uppercase tracking-wider">Constraints</h3>
+                      <div className="bg-white p-4 rounded-md border border-slate-200 flex flex-col gap-2">
+                        {problem.constraints.map((c: string, i: number) => (
+                          <span key={i} className="text-[15px] font-medium font-mono text-slate-800">{c}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {problem.examples && problem.examples.length > 0 && (
+                    <>
+                      {problem.examples.map((ex, idx) => (
+                        <div key={idx} className="bg-[#f8fafc] border border-slate-200 rounded-lg p-5">
+                          <h3 className="text-[15px] font-black text-slate-800 mb-4 uppercase tracking-wider">Sample Test Case {idx + 1}</h3>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                              <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Sample Input</h4>
+                              <div className="bg-white p-4 rounded-md text-[15px] font-medium font-mono text-slate-800 border border-slate-200 whitespace-pre-wrap h-full">
+                                {ex.input}
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Sample Output</h4>
+                              <div className="bg-white p-4 rounded-md text-[15px] font-medium font-mono text-slate-800 border border-slate-200 whitespace-pre-wrap h-full">
+                                {ex.output}
+                              </div>
+                            </div>
+                          </div>
+
+                          {ex.explanation && (
+                            <div className="mt-4 border-t border-slate-200 pt-4">
+                              <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Explanation</h4>
+                              <div className="bg-white p-4 rounded-md text-[15px] font-medium text-[#2d3748] leading-[1.7] whitespace-pre-wrap border border-slate-200">
+                                {ex.explanation}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               </div>
             )}
             
             {activeTab === 'Submissions' && (
               <div className="h-full">
-                <h3 className="text-[18px] font-bold text-slate-900 mb-6 flex items-center gap-2"><CheckCircle2 size={18} className="text-emerald-500"/> Your Submissions</h3>
+                {/* Live Submission Evaluation Removed */}
+
+                <h3 className="text-[18px] font-bold text-slate-900 mb-6 flex items-center gap-2"><CheckCircle2 size={18} className="text-emerald-500"/> Past Submissions</h3>
                 {isLoadingTab ? (
                   <div className="text-sm text-slate-500">Loading submissions...</div>
                 ) : submissions.length > 0 ? (
@@ -702,6 +807,7 @@ export default function ChallengeIDE() {
                         <tr>
                           <th className="px-4 py-3">Time Submitted</th>
                           <th className="px-4 py-3">Language</th>
+                          <th className="px-4 py-3">Status</th>
                           <th className="px-4 py-3 text-right">Points</th>
                         </tr>
                       </thead>
@@ -710,6 +816,9 @@ export default function ChallengeIDE() {
                           <tr key={i} className="hover:bg-slate-50">
                             <td className="px-4 py-3">{new Date(sub.solved_at).toLocaleString()}</td>
                             <td className="px-4 py-3">{sub.language}</td>
+                            <td className={`px-4 py-3 font-bold ${sub.status === 'PASS' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                              {sub.status === 'PASS' ? 'Accepted' : 'Wrong Answer'}
+                            </td>
                             <td className="px-4 py-3 text-right text-emerald-600 font-bold">{sub.points_earned}</td>
                           </tr>
                         ))}
@@ -808,7 +917,7 @@ export default function ChallengeIDE() {
               </div>
             )}
 
-            {activeTab === 'AI Tutor' && (
+            {activeTab === 'Glintspark AI' && (
               <div className="h-full flex flex-col bg-slate-50 rounded-xl overflow-hidden border border-slate-200">
                 {/* Chat window */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -820,7 +929,7 @@ export default function ChallengeIDE() {
                           : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none'
                       }`}>
                         <div className="font-bold text-[10px] uppercase tracking-wider mb-1 opacity-60">
-                          {msg.role === 'user' ? 'You' : 'AI Tutor'}
+                          {msg.role === 'user' ? 'You' : 'Glintspark AI'}
                         </div>
                         <div className="whitespace-pre-wrap">{msg.text}</div>
                       </div>
@@ -895,7 +1004,7 @@ export default function ChallengeIDE() {
         />
 
         {/* Right Pane (White Theme Editor & Console) */}
-        <div className="flex-1 flex flex-col bg-white min-w-0 overflow-y-auto">
+        <div className="flex-1 flex flex-col bg-white min-w-0 overflow-y-scroll">
           
           {/* Top Editor Toolbar */}
           <div className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 sticky top-0 z-20">
@@ -933,23 +1042,14 @@ export default function ChallengeIDE() {
                   {lang.label}
                 </div>
               )}
-              {/* Command Palette Button */}
-              <div className="relative ml-2">
-                <button
-                  onClick={() => editorRef.current?.trigger('anyString', 'editor.action.quickCommand', {})}
-                  className="flex items-center gap-2 text-slate-700 font-semibold text-[13px] px-3 py-1.5 hover:bg-slate-100 rounded transition"
-                  title="Open Command Palette (F1)"
-                >
-                  <Terminal size={14} className="text-slate-500" /> Command Palette
-                </button>
-              </div>
+
               {/* Theme Dropdown */}
               <div className="relative ml-2">
                 <button
                   onClick={() => setShowThemeMenu(!showThemeMenu)}
                   className="flex items-center gap-2 text-slate-700 font-semibold text-[13px] px-3 py-1.5 hover:bg-slate-100 rounded transition"
                 >
-                  Theme: {editorTheme === 'vs-dark' ? 'VS Code Dark' : editorTheme === 'light' ? 'VS Code Light' : editorTheme === 'github-dark' ? 'GitHub Dark' : editorTheme === 'dracula' ? 'Dracula' : 'Monokai'} <ChevronDown size={14} className="text-slate-400" />
+                  Theme: {editorTheme === 'vs-dark' ? 'Dark Theme' : editorTheme === 'light' ? 'Light Theme' : editorTheme === 'github-dark' ? 'Night Theme' : editorTheme === 'dracula' ? 'Dracula' : 'Monokai'} <ChevronDown size={14} className="text-slate-400" />
                 </button>
                 <AnimatePresence>
                   {showThemeMenu && (
@@ -958,9 +1058,9 @@ export default function ChallengeIDE() {
                       className="absolute left-0 top-full mt-1 w-40 bg-white border border-slate-200 rounded shadow-lg py-1 z-50"
                     >
                       {[
-                        { id: 'light', label: 'VS Code Light' },
-                        { id: 'vs-dark', label: 'VS Code Dark' },
-                        { id: 'github-dark', label: 'GitHub Dark' },
+                        { id: 'light', label: 'Light Theme' },
+                        { id: 'vs-dark', label: 'Dark Theme' },
+                        { id: 'github-dark', label: 'Night Theme' },
                         { id: 'dracula', label: 'Dracula' },
                         { id: 'monokai', label: 'Monokai' }
                       ].map(t => (
@@ -1014,10 +1114,10 @@ export default function ChallengeIDE() {
           </div>
 
           {/* Code Editor (Monaco) */}
-          <div className="flex-1 min-h-0 relative">
+          <div className="flex-1 min-h-[400px] shrink-0 relative">
             <MonacoEditor
               height="100%"
-              language={lang.runtime}
+              language={lang.monaco}
               value={code}
               onChange={(value) => setCode(value ?? '')}
               onMount={handleEditorDidMount}
@@ -1066,19 +1166,29 @@ export default function ChallengeIDE() {
               >
                 {isRunning ? 'Running...' : 'Run Code'}
               </button>
-              <button
-                onClick={handleSubmit}
-                disabled={isRunning || isSubmitting}
-                className="px-6 py-2 rounded text-[14px] font-bold text-white bg-[#0e141e] hover:bg-black transition shadow-sm disabled:opacity-50"
-              >
-                {isSubmitting ? 'Submitting...' : 'Submit Code'}
-              </button>
+              
+              {output?.type === 'submit' && output.passed === output.total ? (
+                <button 
+                  onClick={handleNextChallenge}
+                  className="px-6 py-2 bg-[#0e141e] hover:bg-black text-white text-[14px] font-bold rounded transition flex items-center gap-1 shadow-sm"
+                >
+                  {isFromContest ? 'Next Challenge' : 'Next Practice'} <ChevronRight size={16} />
+                </button>
+              ) : (
+                <button
+                  onClick={handleSubmit}
+                  disabled={isRunning || isSubmitting}
+                  className="px-6 py-2 rounded text-[14px] font-bold text-white bg-[#0e141e] hover:bg-black transition shadow-sm disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Submitting...' : 'Submit Code'}
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Dynamic Bottom Console */}
-          {(isCustomInput || hasRun) && (
-            <div className="px-6 pb-12">
+          {/* Dynamic Bottom Console (Run and Submit Code) */}
+          {(isCustomInput || output || isSubmitting) && (
+            <div ref={consoleRef} className="px-6 pb-12">
               
               {isCustomInput && (
                 <div className="mb-6">
@@ -1092,9 +1202,117 @@ export default function ChallengeIDE() {
                 </div>
               )}
 
-              {hasRun && output && (
-                <div className="bg-white border border-slate-200 rounded p-6 shadow-sm">
-                  {output.type === 'error' ? (
+              {hasRun && output && output.type !== 'submit' && (
+                <div className="bg-white border border-slate-200 rounded p-6 shadow-sm mb-6">
+                  {output.testCases ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-4">
+                        <h3 className={`font-bold text-[20px] ${output.passed === output.total ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {output.passed === output.total ? 'Accepted' : 'Wrong Answer'}
+                        </h3>
+                        <span className="text-[13px] font-bold text-slate-500">
+                          {output.passed} / {output.total} Test Cases Passed
+                        </span>
+                      </div>
+                      
+                      {/* Test Case Tabs */}
+                      <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-none">
+                        {output.testCases.map((tc, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setActiveTestCase(idx)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-bold transition whitespace-nowrap ${
+                              activeTestCase === idx 
+                                ? (tc.passed ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200')
+                                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                            }`}
+                          >
+                            {tc.passed ? <Check size={14} className={activeTestCase === idx ? 'text-emerald-600' : 'text-emerald-500'} /> : <AlertTriangle size={14} className={activeTestCase === idx ? 'text-rose-600' : 'text-rose-500'} />}
+                            {tc.name}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Selected Test Case Details */}
+                      {output.testCases[activeTestCase] && (
+                        output.type === 'run' ? (
+                          <div className="space-y-4">
+                            {!output.testCases[activeTestCase].passed && output.testCases[activeTestCase].stderr && (
+                              <div>
+                                <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Runtime Error</h4>
+                                <div className="bg-rose-50 border border-rose-200 p-4 rounded text-[13px] font-mono text-rose-700 whitespace-pre-wrap">
+                                  {output.testCases[activeTestCase].stderr}
+                                </div>
+                              </div>
+                            )}
+                            
+                            <div>
+                              <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Input (stdin)</h4>
+                              <div className="bg-[#f3f7f7] p-4 rounded text-[13px] font-mono text-slate-700 whitespace-pre-wrap border border-slate-200">
+                                {output.testCases[activeTestCase].input}
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Expected Output</h4>
+                              <div className="bg-[#f3f7f7] p-4 rounded text-[13px] font-mono text-slate-700 whitespace-pre-wrap border border-slate-200">
+                                {output.testCases[activeTestCase].expected}
+                              </div>
+                            </div>
+
+                            <div>
+                              <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Your Output</h4>
+                              <div className={`p-4 rounded text-[13px] font-mono whitespace-pre-wrap border ${output.testCases[activeTestCase].passed ? 'bg-emerald-50/50 border-emerald-100 text-slate-700' : 'bg-rose-50/50 border-rose-100 text-rose-700'}`}>
+                                {output.testCases[activeTestCase].actual || 'No output'}
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {/* Submit Code layout (HackerRank style) */}
+                            <div className="mb-4">
+                              <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Compiler Message</h4>
+                              <div className="text-[15px] font-bold text-slate-800">
+                                {output.testCases[activeTestCase].passed ? 'Success' : 'Wrong Answer'}
+                              </div>
+                            </div>
+                            {!output.testCases[activeTestCase].passed && output.testCases[activeTestCase].stderr && (
+                              <div>
+                                <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Runtime Error</h4>
+                                <div className="bg-rose-50 border border-rose-200 p-4 rounded text-[13px] font-mono text-rose-700 whitespace-pre-wrap">
+                                  {output.testCases[activeTestCase].stderr}
+                                </div>
+                              </div>
+                            )}
+                            {output.testCases[activeTestCase].input && (
+                              <div>
+                                <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Input (stdin)</h4>
+                                <div className="bg-[#f3f7f7] p-4 rounded text-[13px] font-mono text-slate-700 whitespace-pre-wrap border border-slate-200">
+                                  {output.testCases[activeTestCase].input}
+                                </div>
+                              </div>
+                            )}
+                            {output.testCases[activeTestCase].expected && (
+                              <div>
+                                <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Expected Output</h4>
+                                <div className="bg-[#f3f7f7] p-4 rounded text-[13px] font-mono text-slate-700 whitespace-pre-wrap border border-slate-200">
+                                  {output.testCases[activeTestCase].expected}
+                                </div>
+                              </div>
+                            )}
+                            {output.testCases[activeTestCase].actual && (
+                              <div>
+                                <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Your Output</h4>
+                                <div className={`p-4 rounded text-[13px] font-mono whitespace-pre-wrap border ${output.testCases[activeTestCase].passed ? 'bg-emerald-50/50 border-emerald-100 text-slate-700' : 'bg-rose-50/50 border-rose-100 text-rose-700'}`}>
+                                  {output.testCases[activeTestCase].actual || 'No output'}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      )}
+                    </div>
+                  ) : output.type === 'error' ? (
                     <div>
                       <h3 className="text-rose-600 font-bold text-[20px] mb-2 flex items-center gap-2">
                         Compilation error :(
@@ -1104,24 +1322,122 @@ export default function ChallengeIDE() {
                         {output.content}
                       </div>
                     </div>
-                  ) : output.passed === output.total && output.total !== undefined ? (
-                    <div>
-                      <h3 className="text-emerald-600 font-bold text-[20px] mb-2">Congratulations!</h3>
-                      <p className="text-[13px] text-slate-500 mb-4">You have passed all test cases.</p>
-                      <div className="bg-[#f3f7f7] p-4 rounded text-[13px] font-mono text-slate-700 whitespace-pre-wrap border border-slate-200">
-                        {output.content}
+                  ) : null}
+                </div>
+              )}
+
+              {isSubmitting && (
+                <div className="bg-white border border-slate-200 rounded p-6 shadow-sm flex flex-col items-center justify-center py-12">
+                  <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4" />
+                  <div className="text-[15px] font-bold text-slate-700">Evaluating your code against hidden test cases...</div>
+                </div>
+              )}
+
+              {!isSubmitting && output?.type === 'submit' && output.testCases && (
+                <div className="bg-white border border-slate-200 rounded shadow-sm overflow-hidden mb-6">
+                  {/* Points Box Header */}
+                  {output.passed === output.total && isFromContest && (
+                    <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 bg-slate-100 border border-slate-200 rounded-full flex items-center justify-center shadow-sm">
+                          <span className="font-bold text-slate-700 text-[24px] uppercase">{lang.label[0]}</span>
+                        </div>
+                        <div>
+                          <div className="text-[20px] text-slate-700">You have earned <span className="font-bold">{problem.points}.00</span> points!</div>
+                          <div className="text-[13px] text-slate-500">You are making great progress towards your next star badge.</div>
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <h3 className="text-slate-800 font-bold text-[20px] mb-4">Execution Results</h3>
-                      <div className="bg-[#f3f7f7] p-4 rounded text-[13px] font-mono text-slate-700 whitespace-pre-wrap border border-slate-200">
-                        {output.content}
+                      <div className="w-64">
+                        <div className="flex justify-between text-[12px] font-bold text-slate-600 mb-2">
+                          <span>100%</span>
+                          <span>{problem.points}/{problem.points}</span>
+                        </div>
+                        <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden flex">
+                          <div className="h-full bg-slate-800 w-1/4"></div>
+                          <div className="h-full bg-emerald-500 w-3/4"></div>
+                        </div>
                       </div>
                     </div>
                   )}
+
+                  {/* Banner */}
+                  <div className={`relative p-8 flex items-center justify-between overflow-hidden ${output.passed === output.total ? 'bg-gradient-to-r from-[#4f46e5] to-[#7c3aed]' : 'bg-[#e74c3c]'}`}>
+                    {/* Background Accents */}
+                    {output.passed === output.total && (
+                      <>
+                        <div className="absolute right-40 top-[-30px] opacity-10 pointer-events-none transform rotate-12 transition-transform duration-1000 hover:rotate-0">
+                          <Trophy size={160} className="text-white" />
+                        </div>
+                        <div className="absolute left-[30%] bottom-[-20px] opacity-20 pointer-events-none">
+                          <Sparkles size={100} className="text-white" />
+                        </div>
+                        <div className="absolute inset-0 bg-white/5 pointer-events-none"></div>
+                      </>
+                    )}
+                    
+                    <div className="relative z-10">
+                      <h2 className="text-white text-[28px] font-bold mb-2 flex items-center gap-2">
+                        {output.passed === output.total ? (
+                          <>Congratulations <Sparkles size={24} className="text-yellow-300 animate-pulse" /></>
+                        ) : 'Wrong Answer'}
+                      </h2>
+                      <p className="text-white/90 text-[15px]">
+                        {output.passed === output.total 
+                          ? 'You solved this challenge. Would you like to challenge your friends?' 
+                          : 'Your code did not pass all test cases. Keep trying!'}
+                      </p>
+                      {output.passed === output.total && (
+                        <div className="flex items-center gap-3 mt-5">
+                          <a 
+                            href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`I just solved the "${problem.title}" challenge on Glintspark! Can you beat my score? \n\nTry it here: https://glintspark.in/challenges/${problem.id}`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 bg-[#25D366] hover:bg-[#1DA851] text-white px-5 py-2 rounded-[4px] font-bold text-[13px] shadow-sm transition active:scale-95"
+                          >
+                            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.711.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.298.144.347.491 1.2.534 1.287.043.087.072.188.014.304-.058.116-.087.188-.173.289l-.26.304c-.087.086-.177.18-.076.354.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86s.274.072.376-.043c.101-.116.433-.506.549-.68.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.202c.045.072.045.419-.1.824zm-3.423-14.416c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm.029 18.88c-1.161 0-2.305-.292-3.318-.844l-3.677.964.984-3.595c-.607-1.052-.927-2.246-.926-3.468.001-3.825 3.113-6.937 6.937-6.937 1.856.001 3.598.723 4.907 2.034 1.31 1.311 2.031 3.054 2.03 4.908-.001 3.825-3.113 6.938-6.937 6.938z"/></svg>
+                            WhatsApp
+                          </a>
+                          <a 
+                            href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`https://glintspark.in/challenges/${problem.id}`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2 bg-[#0077b5] hover:bg-[#005582] text-white px-5 py-2 rounded-[4px] font-bold text-[13px] shadow-sm transition active:scale-95"
+                          >
+                            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+                            LinkedIn
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="relative z-10">
+                      {output.passed === output.total && (
+                        <button 
+                          onClick={handleNextChallenge}
+                          className="px-8 py-3 bg-white text-[#4f46e5] text-[15px] font-black rounded shadow-xl hover:bg-slate-50 transition transform hover:-translate-y-1 hover:shadow-2xl"
+                        >
+                          {isFromContest ? 'Next Challenge' : 'Next Practice'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Test Cases List */}
+                  <div className="p-6 space-y-4">
+                    {output.testCases.map((tc, idx) => (
+                      <div key={idx} className="flex items-center gap-3">
+                        <div className={`flex items-center justify-center w-6 h-6 rounded-full border ${tc.passed ? 'text-emerald-500 bg-white border-emerald-500' : 'text-rose-500 bg-white border-rose-500'}`}>
+                          {tc.passed ? <Check size={14} strokeWidth={3} /> : <Lock size={14} strokeWidth={3} />}
+                        </div>
+                        <span className={`font-bold text-[15px] ${tc.passed ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          Test case {idx}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
+
             </div>
           )}
 

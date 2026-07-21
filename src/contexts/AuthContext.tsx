@@ -19,6 +19,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const initAuth = async () => {
+      // 1. Check for hardcoded mock login
+      const mockRole = localStorage.getItem('mock_role');
+      const mockEmail = sessionStorage.getItem('mock_email');
+      
+      if (mockRole) {
+        setUser({
+          _id: `mock_${mockRole}`,
+          email: mockEmail || `${mockRole}@glintspark.com`,
+          name: mockRole === 'admin' ? 'Master Admin' : 'Company Partner',
+          firstName: mockRole === 'admin' ? 'Master' : 'Company',
+          lastName: mockRole === 'admin' ? 'Admin' : 'Partner',
+          avatar: '',
+          lessonsCompleted: 0,
+          completedLessonIds: [],
+          unlockedLessonIds: [],
+          createdAt: new Date(),
+          onboardingCompleted: true,
+          streak: 0,
+          xp: 0,
+          lastActiveAt: new Date().toISOString(),
+          activity_log: [],
+          activity_history: []
+        });
+        setLoading(false);
+        return; // Bypass Supabase
+      }
+
+      // 2. Normal Supabase flow
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         // INSTANT UI UNLOCK: Set a skeleton user so the app loads immediately
@@ -95,8 +123,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLoading(false);
 
         // BACKGROUND: Fetch real profile
-        supabaseDB.findOne({ _id: session.user.id }).then(profile => {
-          if (profile) setUser(profile);
+        supabaseDB.findOne({ _id: session.user.id }).then(async profile => {
+          if (profile) {
+            setUser(profile);
+            if (profile.onboarding_completed) {
+              localStorage.setItem(`onboarded_${session.user.id}`, 'true');
+            }
+          } else {
+            // New user missing from DB, upsert a default row!
+            const newProfile = {
+               _id: session.user.id,
+               email: session.user.email || '',
+               name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+               first_name: session.user.user_metadata?.first_name || '',
+               xp: 0,
+               streak: 0,
+               onboarding_completed: false
+            };
+            await supabaseDB.upsertUser(newProfile);
+          }
         });
 
         // Fetch Custom Token and Sign in to Firebase (Run in background)
@@ -117,8 +162,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         })();
       } else {
-        setUser(null);
-        if (firebaseAuth) await firebaseAuth.signOut();
+        const mockRole = localStorage.getItem('mock_role');
+        if (!mockRole) {
+          setUser(null);
+          if (firebaseAuth) await firebaseAuth.signOut();
+        }
         setLoading(false);
       }
     });
@@ -127,6 +175,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const logout = async () => {
+    localStorage.removeItem('mock_role');
     await supabase.auth.signOut();
     setUser(null);
   };

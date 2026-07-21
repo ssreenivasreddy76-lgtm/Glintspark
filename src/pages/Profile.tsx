@@ -3,7 +3,8 @@ import {
   Trophy, Star, Calendar, MapPin, 
   Link as LinkIcon, 
   Award, BookOpen, Briefcase, ChevronRight,
-  ShieldCheck, Zap, Sparkles, Upload, Building, AlertCircle, FileText
+  ShieldCheck, Zap, Sparkles, Upload, Building, AlertCircle, FileText,
+  Mail, User, GraduationCap
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
@@ -32,6 +33,17 @@ export default function Profile() {
   }, [location.search]);
   const [interviews, setInterviews] = useState<any[]>([]);
   const [loadingInterviews, setLoadingInterviews] = useState(false);
+  const [onboardingData, setOnboardingData] = useState<any>(null);
+
+  useEffect(() => {
+    const email = user?.email || sessionStorage.getItem('mock_email');
+    if (email) {
+      const usersData = JSON.parse(localStorage.getItem('mock_users_data') || '{}');
+      if (usersData[email]) {
+        setOnboardingData(usersData[email]);
+      }
+    }
+  }, [user]);
 
   // Resume Matching States (Feature 4)
   const [resumeText, setResumeText] = useState('');
@@ -176,28 +188,39 @@ export default function Profile() {
             <div className="p-8 flex flex-col items-center text-center border-b border-[#f3f7f7]">
               <div className="relative group">
                 <div className="w-32 h-32 rounded-2xl bg-brand-primary text-white flex items-center justify-center text-4xl font-black shadow-2xl shadow-brand-primary/20 group-hover:scale-105 transition-transform">
-                  {user ? user.name.split(' ').map(w => w[0]).join('').toUpperCase() : 'U'}
+                  {onboardingData?.fullName ? onboardingData.fullName.split(' ').map((w: string) => w[0]).join('').substring(0, 2).toUpperCase() : user ? user.name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase() : 'U'}
                 </div>
                 <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-emerald-500 border-4 border-white rounded-full"></div>
               </div>
-              <h1 className="text-2xl font-bold text-[#0e141e] mt-6 leading-tight">{user?.name || 'Developer'}</h1>
-              <p className="text-sm text-[#738f93] mt-1 font-medium">@developer_pro</p>
+              <h1 className="text-2xl font-bold text-[#0e141e] mt-6 leading-tight">{onboardingData?.fullName || user?.name || 'Developer'}</h1>
+              <p className="text-sm text-[#738f93] mt-1 font-medium">@{onboardingData?.fullName ? onboardingData.fullName.toLowerCase().replace(/\s+/g, '') : 'developer_pro'}</p>
               
               <div className="flex items-center gap-2 mt-4 px-3 py-1 bg-amber-50 text-amber-700 text-[10px] font-black uppercase tracking-widest rounded-full border border-amber-100">
                 <Star size={12} className="fill-amber-500" /> Platinum Member
               </div>
+
+              <button onClick={() => window.location.href = '/onboarding?edit=true'} className="mt-6 w-full py-2.5 rounded-lg border border-[#d1d5db] text-[#0e141e] text-sm font-bold hover:bg-[#f3f7f7] transition-colors">
+                Edit Profile
+              </button>
             </div>
 
             <div className="p-6 space-y-5">
               <div className="space-y-3">
-                <div className="flex items-center gap-3 text-sm text-[#738f93]">
-                  <MapPin size={16} className="shrink-0" /> San Francisco, CA
+                <div className="flex items-start gap-3 text-sm text-[#738f93]">
+                  <Mail size={16} className="shrink-0 mt-0.5" /> 
+                  <span className="break-all">{onboardingData?.backupEmail || sessionStorage.getItem('mock_email') || 'user@example.com'}</span>
                 </div>
-                <div className="flex items-center gap-3 text-sm text-[#738f93]">
-                  <Calendar size={16} className="shrink-0" /> Joined April 2026
+                <div className="flex items-start gap-3 text-sm text-[#738f93]">
+                  <User size={16} className="shrink-0 mt-0.5" /> 
+                  <span>{onboardingData?.gender || 'Not specified'}</span>
                 </div>
-                <div className="flex items-center gap-3 text-sm text-brand-primary font-bold">
-                  <LinkIcon size={16} className="shrink-0" /> portfolio.dev
+                <div className="flex items-start gap-3 text-sm text-[#738f93]">
+                  <Building size={16} className="shrink-0 mt-0.5" /> 
+                  <span>{onboardingData?.college || 'University'}</span>
+                </div>
+                <div className="flex items-start gap-3 text-sm text-[#738f93]">
+                  <GraduationCap size={16} className="shrink-0 mt-0.5" /> 
+                  <span>{onboardingData?.branch || 'Major'} ({onboardingData?.graduationYear || 'Year'})</span>
                 </div>
               </div>
 
@@ -279,7 +302,7 @@ export default function Profile() {
                   <section>
                     <h4 className="text-lg font-bold text-[#0e141e] mb-6">Skills Mastery</h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      {['JavaScript', 'TypeScript', 'React', 'Node.js', 'PostgreSQL', 'AWS', 'Docker', 'System Design'].map(skill => (
+                      {(onboardingData?.skills ? onboardingData.skills.split(',').map((s: string) => s.trim()) : ['JavaScript', 'TypeScript', 'React', 'Node.js', 'PostgreSQL', 'AWS', 'Docker', 'System Design']).map((skill: string) => (
                         <div key={skill} className="px-4 py-3 bg-[#f3f7f7] border border-[#d1d5db] rounded-lg text-sm font-bold text-[#0e141e] flex items-center justify-between group cursor-default">
                           {skill}
                           <ChevronRight size={14} className="text-slate-300 group-hover:text-brand-primary transition-colors" />
@@ -297,9 +320,9 @@ export default function Profile() {
                       <BookOpen size={24} />
                     </div>
                     <div>
-                      <h4 className="font-bold text-[#0e141e]">University of Computer Science</h4>
-                      <p className="text-sm text-[#738f93] mt-1">B.S. in Software Engineering</p>
-                      <p className="text-xs text-slate-400 mt-2 font-medium">Class of 2022 • GPA: 3.9/4.0</p>
+                      <h4 className="font-bold text-[#0e141e]">{onboardingData?.college || 'University of Computer Science'}</h4>
+                      <p className="text-sm text-[#738f93] mt-1">{onboardingData?.branch || 'B.S. in Software Engineering'}</p>
+                      <p className="text-xs text-slate-400 mt-2 font-medium">Class of {onboardingData?.graduationYear || '2022'}</p>
                     </div>
                   </div>
                 </motion.div>

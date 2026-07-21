@@ -3,6 +3,8 @@ import { getFirestore, collection, getDocs, doc, setDoc, updateDoc, deleteDoc, q
 import type { Firestore } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { FirebaseStorage } from 'firebase/storage';
+import { getAuth } from 'firebase/auth';
+import type { Auth } from 'firebase/auth';
 import type { Challenge, Submission, InterviewSession } from '../types';
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -19,16 +21,20 @@ const isConfigured = !!firebaseConfig.apiKey;
 let app;
 let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
+let auth: Auth | null = null;
 
 if (isConfigured) {
   try {
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
     storage = getStorage(app);
+    auth = getAuth(app);
   } catch (err) {
     console.error("Failed to initialize Firebase:", err);
   }
 }
+
+export const firebaseAuth = auth;
 
 export class FirebaseService {
   // --- Challenges API ---

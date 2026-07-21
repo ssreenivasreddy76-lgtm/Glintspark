@@ -1,9 +1,9 @@
 {
   "firestore": {
-    "rules": "firestore.rules"
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
   },
   "hosting": {
-    "target": "glintspark",
     "public": "dist",
     "ignore": [
       "firebase.json",
@@ -18,25 +18,7 @@
     ],
     "headers": [
       {
-        "source": "**/*.@(js|css|woff2|woff|ttf|otf)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "public, max-age=31536000, immutable"
-          }
-        ]
-      },
-      {
-        "source": "**/*.@(jpg|jpeg|png|svg|gif|webp|ico)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "public, max-age=86400"
-          }
-        ]
-      },
-      {
-        "source": "/index.html",
+        "source": "/**",
         "headers": [
           {
             "key": "Cache-Control",

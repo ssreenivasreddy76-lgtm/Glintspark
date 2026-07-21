@@ -1,9 +1,9 @@
+import { useState, useEffect, useRef } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { Terminal, BookOpen, Layers, ArrowRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useRef } from 'react';
 
-const tracks = [
+const baseTracks = [
   {
     id: 'c',
     title: 'C Programming',
@@ -11,113 +11,62 @@ const tracks = [
     icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/c/c-original.svg" alt="C" className="w-8 h-8" />,
     difficulty: 'Beginner',
     difficultyColor: 'bg-emerald-100 text-emerald-700',
-    lessons: 45,
-    quizzes: 45,
-    group: 'beginner',
-  },
-  {
-    id: 'html',
-    title: 'HTML',
-    description: 'Build the structure of every web page from scratch.',
-    icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/html5/html5-original.svg" alt="HTML" className="w-8 h-8" />,
-    difficulty: 'Beginner',
-    difficultyColor: 'bg-emerald-100 text-emerald-700',
-    lessons: 28,
-    quizzes: 28,
-    group: 'beginner',
-  },
-  {
-    id: 'css',
-    title: 'CSS',
-    description: 'Style, animate, and make your web pages beautiful.',
-    icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/css3/css3-original.svg" alt="CSS" className="w-8 h-8" />,
-    difficulty: 'Beginner',
-    difficultyColor: 'bg-emerald-100 text-emerald-700',
-    lessons: 32,
-    quizzes: 30,
-    group: 'beginner',
-  },
-  {
-    id: 'python',
-    title: 'Python',
-    description: 'Learn versatile Python for any project.',
-    icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg" alt="Python" className="w-8 h-8" />,
-    difficulty: 'Beginner',
-    difficultyColor: 'bg-emerald-100 text-emerald-700',
-    lessons: 44,
-    quizzes: 44,
-    group: 'beginner',
-  },
-  {
-    id: 'javascript',
-    title: 'JavaScript',
-    description: 'Create interactive web applications.',
-    icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/javascript/javascript-original.svg" alt="JS" className="w-8 h-8" />,
-    difficulty: 'Beginner',
-    difficultyColor: 'bg-emerald-100 text-emerald-700',
-    lessons: 46,
-    quizzes: 35,
-    group: 'beginner',
-  },
-  {
-    id: 'logic',
-    title: 'Logic Building',
-    description: 'Learn to think like a programmer.',
-    icon: <Terminal className="text-indigo-500 w-8 h-8" />,
-    difficulty: 'Beginner',
-    difficultyColor: 'bg-emerald-100 text-emerald-700',
-    lessons: 15,
-    quizzes: 15,
     group: 'beginner',
   },
   {
     id: 'sql',
     title: 'SQL',
-    description: 'Master relational databases, joins, and query optimization.',
-    icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/mysql/mysql-original.svg" alt="SQL" className="w-8 h-8" />,
+    description: 'Learn relational database design.',
+    icon: <DatabaseIcon className="w-8 h-8 text-blue-500" />,
     difficulty: 'Beginner',
     difficultyColor: 'bg-emerald-100 text-emerald-700',
-    lessons: 25,
-    quizzes: 22,
     group: 'beginner',
+  },
+  {
+    id: 'javascript',
+    title: 'JavaScript',
+    description: 'Master prototype closures, dynamic event loops.',
+    icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/javascript/javascript-original.svg" alt="JS" className="w-8 h-8" />,
+    difficulty: 'Intermediate',
+    difficultyColor: 'bg-amber-100 text-amber-700',
+    group: 'intermediate',
   },
   {
     id: 'java',
     title: 'Java',
-    description: 'Master object-oriented programming with Java.',
+    description: 'Excel in Object-Oriented Design patterns.',
     icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/java/java-original.svg" alt="Java" className="w-8 h-8" />,
     difficulty: 'Intermediate',
-    difficultyColor: 'bg-violet-100 text-violet-700',
-    lessons: 48,
-    quizzes: 15,
-    group: 'advanced',
+    difficultyColor: 'bg-amber-100 text-amber-700',
+    group: 'intermediate',
   },
   {
-    id: 'cpp',
-    title: 'C++',
-    description: 'Develop high-performance systems and games.',
-    icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/cplusplus/cplusplus-original.svg" alt="C++" className="w-8 h-8" />,
-    difficulty: 'Advanced',
-    difficultyColor: 'bg-rose-100 text-rose-700',
-    lessons: 55,
-    quizzes: 14,
-    group: 'advanced',
+    id: 'python',
+    title: 'Python',
+    description: 'Acquire pythonic elegance.',
+    icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg" alt="Python" className="w-8 h-8" />,
+    difficulty: 'Beginner',
+    difficultyColor: 'bg-emerald-100 text-emerald-700',
+    group: 'beginner',
   },
   {
     id: 'dsa',
-    title: 'DSA',
-    description: 'Ace technical interviews and code challenges.',
-    icon: <img src="https://img.icons8.com/color/96/data-configuration.png" alt="DSA" className="w-8 h-8" />,
-    difficulty: 'Intermediate',
-    difficultyColor: 'bg-violet-100 text-violet-700',
-    lessons: 100,
-    quizzes: 45,
+    title: 'Data Structures & Algos',
+    description: 'Design highly efficient queues, stacks, linked nodes.',
+    icon: <Terminal className="w-8 h-8 text-indigo-500" />,
+    difficulty: 'Advanced',
+    difficultyColor: 'bg-rose-100 text-rose-700',
     group: 'advanced',
-  },
+  }
 ];
 
-const beginnerTracks = tracks.filter(t => t.group === 'beginner');
-const advancedTracks = tracks.filter(t => t.group === 'advanced');
+function DatabaseIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+    </svg>
+  );
+}
 
 // Animation variants
 const containerVariants = {
@@ -143,196 +92,156 @@ const cardVariants = {
   },
 };
 
-const headerVariants = {
-  hidden: { opacity: 0, x: -20 },
-  visible: {
-    opacity: 1,
-    x: 0,
-    transition: { duration: 0.5, ease: 'easeOut' as const },
-  },
-};
-
-const badgeVariants = {
-  hidden: { opacity: 0, x: 20 },
-  visible: {
-    opacity: 1,
-    x: 0,
-    transition: { duration: 0.5, ease: 'easeOut' as const },
-  },
-};
-
-const pageHeaderVariants = {
-  hidden: { opacity: 0, y: -16 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.6, ease: 'easeOut' as const },
-  },
-};
-
-function TrackCard({ track, index }: { track: typeof tracks[0]; index: number }) {
-  return (
-    <Link to={`/curriculum/${track.id}`}>
-      <motion.div
-        variants={cardVariants}
-        whileHover={{
-          y: -6,
-          boxShadow: '0 16px 40px rgba(0,0,0,0.10)',
-          borderColor: 'rgba(99, 102, 241, 0.3)',
-          transition: { type: 'spring', stiffness: 400, damping: 20 },
-        }}
-        whileTap={{ scale: 0.97 }}
-        className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col justify-between cursor-pointer h-full"
-      >
-        {/* Top: Icon + Difficulty Badge */}
-        <div>
-          <div className="flex items-start justify-between mb-5">
-            <motion.div
-              className="w-12 h-12 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-center p-2 shadow-sm"
-              whileHover={{ scale: 1.15, rotate: 4 }}
-              transition={{ type: 'spring', stiffness: 350, damping: 14 }}
-            >
-              {track.icon}
-            </motion.div>
-            <motion.span
-              className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full ${track.difficultyColor}`}
-              initial={{ opacity: 0, scale: 0.7 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: index * 0.06 + 0.25, type: 'spring', stiffness: 300 }}
-            >
-              {track.difficulty}
-            </motion.span>
-          </div>
-
-          {/* Title & Description */}
-          <h3 className="text-[17px] font-bold text-slate-800 mb-1.5 group-hover:text-brand-primary transition-colors duration-200">
-            {track.title}
-          </h3>
-          <p className="text-slate-500 text-[13px] leading-relaxed">
-            {track.description}
-          </p>
-        </div>
-
-        {/* Bottom: Lesson & Quiz Counts + Arrow */}
-        <div className="mt-6 pt-5 border-t border-slate-100 flex items-center justify-between text-[12px] text-slate-500">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5">
-              <BookOpen size={13} className="text-slate-400" />
-              <span className="font-bold">{track.lessons} Lessons</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Layers size={13} className="text-slate-400" />
-              <span className="font-bold">{track.quizzes} Quizzes</span>
-            </div>
-          </div>
-          <motion.div
-            className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-400"
-            whileHover={{ backgroundColor: '#6366f1', color: '#fff', x: 2 }}
-            transition={{ duration: 0.2 }}
-          >
-            <ArrowRight size={13} />
-          </motion.div>
-        </div>
-      </motion.div>
-    </Link>
-  );
-}
-
-function Section({
-  title,
-  badge,
-  badgeClass,
-  tracks: sectionTracks,
-}: {
-  title: string;
-  badge: string;
-  badgeClass: string;
-  tracks: typeof tracks;
-}) {
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true, margin: '-60px' });
-
-  return (
-    <section ref={ref}>
-      <motion.div
-        className="flex items-center justify-between mb-6"
-        initial="hidden"
-        animate={inView ? 'visible' : 'hidden'}
-      >
-        <motion.h2
-          variants={headerVariants}
-          className="text-xl font-bold text-slate-900"
-        >
-          {title}
-        </motion.h2>
-        <motion.span
-          variants={badgeVariants}
-          className={`text-xs font-bold uppercase tracking-widest ${badgeClass}`}
-        >
-          {badge}
-        </motion.span>
-      </motion.div>
-
-      <motion.div
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
-        variants={containerVariants}
-        initial="hidden"
-        animate={inView ? 'visible' : 'hidden'}
-      >
-        {sectionTracks.map((track, i) => (
-          <TrackCard key={track.id} track={track} index={i} />
-        ))}
-      </motion.div>
-    </section>
-  );
-}
-
 export default function Curriculum() {
-  return (
-    <div className="bg-[#f8fafc] min-h-screen pb-24">
+  const [lessonsMap, setLessonsMap] = useState<Record<string, any[]>>({});
 
-      {/* Page Header */}
-      <motion.div
-        className="bg-white border-b border-slate-200 shadow-sm py-10"
-        variants={pageHeaderVariants}
-        initial="hidden"
-        animate="visible"
-      >
-        <div className="max-w-7xl mx-auto px-8">
-          <motion.h1
-            className="text-3xl font-bold text-slate-900"
-            initial={{ opacity: 0, y: -10 }}
+  useEffect(() => {
+    const saved = localStorage.getItem('mock_curriculum_lessons');
+    if (saved) {
+      try {
+        setLessonsMap(JSON.parse(saved));
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  const tracks = baseTracks.map(track => ({
+    ...track,
+    lessons: (lessonsMap[track.id] || []).length,
+    quizzes: Math.floor((lessonsMap[track.id] || []).length / 2) // mock ratio
+  }));
+
+  const beginnerTracks = tracks.filter(t => t.group === 'beginner');
+  const intermediateTracks = tracks.filter(t => t.group === 'intermediate');
+  const advancedTracks = tracks.filter(t => t.group === 'advanced');
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans pb-24">
+      {/* Hero Section */}
+      <section className="relative pt-24 pb-16 overflow-hidden bg-slate-900 border-b border-white/10">
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-slate-900"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-primary/10 blur-[120px] rounded-full pointer-events-none"></div>
+
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/10 text-white text-xs font-bold uppercase tracking-widest mb-6 backdrop-blur-md"
           >
-            Learning Tracks
+            <BookOpen size={14} className="text-brand-primary" />
+            Curriculum
+          </motion.div>
+          <motion.h1
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-4xl md:text-5xl font-black text-white tracking-tight mb-4"
+          >
+            Master Technical Skills
           </motion.h1>
           <motion.p
-            className="text-slate-500 mt-2 text-base"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2, duration: 0.5 }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="text-lg text-slate-400 max-w-2xl mx-auto font-medium"
           >
-            Structured curriculum designed to take you from{' '}
-            <span className="text-brand-primary font-semibold">beginner</span> to expert.
+            Structured learning paths designed to take you from beginner to industry-ready engineer.
           </motion.p>
         </div>
-      </motion.div>
+      </section>
 
-      <div className="max-w-7xl mx-auto px-8 py-12 space-y-14">
-        <Section
-          title="Beginner Foundations"
-          badge="Strong Starts"
-          badgeClass="text-brand-primary"
-          tracks={beginnerTracks}
-        />
-        <Section
-          title="Advanced & Specialized"
-          badge="Level Up"
-          badgeClass="text-rose-500"
-          tracks={advancedTracks}
-        />
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-20 space-y-16">
+        
+        {/* Beginner Tracks */}
+        <section>
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl font-black text-slate-900">Beginner Friendly</h2>
+            <span className="text-sm font-bold text-slate-500 bg-white px-4 py-1.5 rounded-full border border-slate-200 shadow-sm">{beginnerTracks.length} Tracks</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {beginnerTracks.map(track => (
+              <TrackCard key={track.id} track={track} />
+            ))}
+          </div>
+        </section>
+
+        {/* Intermediate Tracks */}
+        <section>
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl font-black text-slate-900">Intermediate Logic</h2>
+            <span className="text-sm font-bold text-slate-500 bg-white px-4 py-1.5 rounded-full border border-slate-200 shadow-sm">{intermediateTracks.length} Tracks</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {intermediateTracks.map(track => (
+              <TrackCard key={track.id} track={track} />
+            ))}
+          </div>
+        </section>
+
+        {/* Advanced Tracks */}
+        <section>
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl font-black text-slate-900">Advanced Concepts</h2>
+            <span className="text-sm font-bold text-slate-500 bg-white px-4 py-1.5 rounded-full border border-slate-200 shadow-sm">{advancedTracks.length} Tracks</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {advancedTracks.map(track => (
+              <TrackCard key={track.id} track={track} />
+            ))}
+          </div>
+        </section>
+
       </div>
     </div>
+  );
+}
+
+function TrackCard({ track }: { track: any }) {
+  const ref = useRef(null);
+  const isInView = useInView(ref, { once: true, margin: '-50px' });
+
+  return (
+    <motion.div
+      ref={ref}
+      variants={cardVariants}
+      initial="hidden"
+      animate={isInView ? 'visible' : 'hidden'}
+      className="bg-white rounded-[24px] p-1 shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-200 hover:border-brand-primary/50 group relative overflow-hidden flex flex-col h-full"
+    >
+      <div className="bg-white rounded-[23px] p-6 h-full flex flex-col relative z-10">
+        <div className="flex justify-between items-start mb-6">
+          <div className="w-14 h-14 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center p-3 group-hover:scale-110 transition-transform duration-300 shadow-sm">
+            {track.icon}
+          </div>
+          <span className={`text-xs font-bold px-3 py-1.5 rounded-xl uppercase tracking-wider ${track.difficultyColor}`}>
+            {track.difficulty}
+          </span>
+        </div>
+
+        <h3 className="text-xl font-black text-slate-900 mb-2 group-hover:text-brand-primary transition-colors">{track.title}</h3>
+        <p className="text-slate-500 text-sm font-medium leading-relaxed mb-8 flex-1">{track.description}</p>
+
+        <div className="flex items-center gap-4 text-xs font-bold text-slate-500 mb-6 pb-6 border-b border-slate-100">
+          <div className="flex items-center gap-1.5">
+            <BookOpen size={16} className="text-slate-400" />
+            {track.lessons} Lessons
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Layers size={16} className="text-slate-400" />
+            {track.quizzes} Quizzes
+          </div>
+        </div>
+
+        <Link
+          to={`/curriculum/${track.id}`}
+          className="w-full py-3.5 bg-slate-900 hover:bg-brand-primary text-white text-sm font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 group/btn shadow-md hover:shadow-brand-primary/25"
+        >
+          View Course <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
+        </Link>
+      </div>
+    </motion.div>
   );
 }

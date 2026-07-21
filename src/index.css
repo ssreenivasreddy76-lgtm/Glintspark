@@ -31,3 +31,9 @@ body {
   background-color: rgba(37, 99, 235, 0.2);
   color: #0f172a;
 }
+
+/* Hide Edge/IE native password reveal icon */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}

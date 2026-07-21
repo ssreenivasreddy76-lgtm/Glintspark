@@ -1,18 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Anyone can read challenges, but writing is blocked from the client
-    match /challenges/{challengeId} {
-      allow read: if true;
-      allow write: if false;
-    }
-    
-    // Submissions and interviews are open for reads and writes
-    match /solved_challenges/{submissionId} {
-      allow read, write: if true;
-    }
-    match /interview_sessions/{sessionId} {
+    match /{document=**} {
       allow read, write: if true;
     }
   }
