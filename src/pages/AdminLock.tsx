@@ -10,7 +10,10 @@ export default function AdminLock() {
   const [error, setError] = useState('');
 
   // Protect the route from non-authorized emails
-  if (!user || user.email !== 'ssreenivasreddy76@gmail.com') {
+  const isMasterAdmin = user?.email === 'glintsparkfounder@founder' || user?.email === 'glintsparkfounder@founder.com';
+  const isCollegeAdmin = user?.email === 'ssreenivasreddy76@gmail.com';
+
+  if (!user || (!isMasterAdmin && !isCollegeAdmin)) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4">
         <ShieldAlert className="w-16 h-16 text-red-500 mb-4" />
@@ -32,12 +35,12 @@ export default function AdminLock() {
     e.preventDefault();
     setError('');
 
-    if (passcode === 'Founder@seenu') {
+    if (passcode === 'Founder@seenu' && isMasterAdmin) {
       navigate('/admin/master');
-    } else if (passcode === 'college@admin') {
+    } else if (passcode === 'college@admin' && isCollegeAdmin) {
       navigate('/admin/college');
     } else {
-      setError('Invalid Admin Passcode');
+      setError('Invalid Admin Passcode or Unauthorized Email');
     }
   };
 

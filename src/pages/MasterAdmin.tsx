@@ -18,7 +18,8 @@ export default function MasterAdmin() {
 
   useEffect(() => {
     // Basic secondary guard
-    if (!user || user.email !== 'ssreenivasreddy76@gmail.com') {
+    const isMasterAdmin = user?.email === 'glintsparkfounder@founder' || user?.email === 'glintsparkfounder@founder.com';
+    if (!user || !isMasterAdmin) {
       navigate('/dashboard');
       return;
     }
