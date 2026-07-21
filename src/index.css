@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+@media (min-width: 1024px) {
+  html {
+    font-size: 14.5px;
+  }
+}
+
 @theme {
   --font-sans: "Inter", system-ui, sans-serif;
   --color-brand-light: #60a5fa;
