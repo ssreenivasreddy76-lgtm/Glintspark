@@ -6,7 +6,9 @@ import Auth from './pages/Auth';
 import { DeveloperOnboarding } from './pages/DeveloperOnboarding';
 import Dashboard from './pages/Dashboard';
 import Curriculum from './pages/Curriculum';
-import Admin from './pages/Admin';
+import AdminLock from './pages/AdminLock';
+import MasterAdmin from './pages/MasterAdmin';
+import CollegeAdmin from './pages/CollegeAdmin';
 import Leaderboard from './pages/Leaderboard';
 import ScoringRules from './pages/ScoringRules';
 import Challenges from './pages/Challenges';
@@ -57,7 +59,9 @@ function App() {
           <Route path="/company/profile" element={<ProtectedRoute><CompanyProfile /></ProtectedRoute>} />
           <Route path="/mock-interview/:type" element={<ProtectedRoute><MockInterviewRoom /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute><AdminLock /></ProtectedRoute>} />
+          <Route path="/admin/master" element={<ProtectedRoute><MasterAdmin /></ProtectedRoute>} />
+          <Route path="/admin/college" element={<ProtectedRoute><CollegeAdmin /></ProtectedRoute>} />
           <Route path="/quizzes" element={<ProtectedRoute><Quizzes /></ProtectedRoute>} />
           <Route path="/quizzes/:id" element={<ProtectedRoute><QuizPlayer /></ProtectedRoute>} />
           {/* Public Pages */}

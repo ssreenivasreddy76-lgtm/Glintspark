@@ -11,6 +11,8 @@ DROP TABLE IF EXISTS public.problems CASCADE;
 DROP TABLE IF EXISTS public.contests CASCADE;
 DROP TABLE IF EXISTS public.practice_tracks CASCADE;
 DROP TABLE IF EXISTS public.users CASCADE;
+DROP TABLE IF EXISTS public.admin_config CASCADE;
+DROP TABLE IF EXISTS public.interview_questions CASCADE;
 
 
 -- 1. Users Table (Core Auth & Profile)
@@ -119,6 +121,25 @@ CREATE TABLE public.submissions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 9. Admin Config (Stores Gemini API Keys)
+CREATE TABLE public.admin_config (
+    id TEXT PRIMARY KEY DEFAULT 'global',
+    gemini_api_keys JSONB DEFAULT '[]'::jsonb,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 10. Interview Questions (The 555-question bank)
+CREATE TABLE public.interview_questions (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    question TEXT NOT NULL,
+    options JSONB, -- Array of strings (if multiple choice)
+    correct_answer TEXT,
+    difficulty TEXT, -- Easy, Medium, Hard
+    category TEXT, -- e.g., 'C Programming'
+    explanation TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
 -- ==========================================
 -- ROW LEVEL SECURITY (RLS)
 -- ==========================================
@@ -133,6 +154,8 @@ ALTER TABLE public.problem_languages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sample_test_cases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hidden_test_cases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.submissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admin_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interview_questions ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all" ON public.users;
 CREATE POLICY "Allow all" ON public.users FOR ALL USING (true) WITH CHECK (true);
@@ -157,6 +180,12 @@ CREATE POLICY "Allow all" ON public.hidden_test_cases FOR ALL USING (true) WITH 
 
 DROP POLICY IF EXISTS "Allow all" ON public.submissions;
 CREATE POLICY "Allow all" ON public.submissions FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all" ON public.admin_config;
+CREATE POLICY "Allow all" ON public.admin_config FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow all" ON public.interview_questions;
+CREATE POLICY "Allow all" ON public.interview_questions FOR ALL USING (true) WITH CHECK (true);
 
 -- 9. Solved Challenges Table (Used for tracking user progress on challenges)
 CREATE TABLE IF NOT EXISTS public.solved_challenges (
