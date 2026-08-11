@@ -42,15 +42,32 @@ export interface User {
   avatar?: string;
   streak?: number;
   xp?: number;
+  penalties?: number;
+  proctorLockUntil?: number;
   lastActiveAt?: string;
   activity_log?: string[];
   activity_history?: ActivityItem[];
   isPro?: boolean;
   role?: string;
   skills?: string[];
-  username?: string;
-  joinedDate?: string;
-  lastLoginBonusAt?: string;
+  college?: string;
+  branch?: string;
+  batch?: string;
+  graduationYear?: string;
+  phoneNumber?: string;
+  backupEmail?: string;
+  usn?: string;
+  marks10thMax?: string;
+  marks10thObtained?: string;
+  marks12thMax?: string;
+  marks12thObtained?: string;
+  leetcode?: string;
+  codeforces?: string;
+  codechef?: string;
+  gfg?: string;
+  hackerrank?: string;
+  github?: string;
+  certifications?: { title: string; issuer: string; id: string }[];
 }
 
 export interface ActivityItem {

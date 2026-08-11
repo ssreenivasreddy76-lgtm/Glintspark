@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { Brain, Code, Calculator, ArrowRight, Clock, Award, Star } from 'lucide-react';
+import { Brain, Code, Calculator, ArrowRight, Clock, Award, Star, Loader2 } from 'lucide-react';
+import { firebaseDB } from '../services/firebaseService';
 
 export const mockQuizzes = [
   {
@@ -48,18 +49,21 @@ export const mockQuizzes = [
 export default function Quizzes() {
   const [activeCategory, setActiveCategory] = useState<'All' | 'Aptitude' | 'Reasoning' | 'Technical'>('All');
   const [quizzes, setQuizzes] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   React.useEffect(() => {
-    const saved = localStorage.getItem('mock_quizzes');
-    if (saved) {
+    const fetchQuizzes = async () => {
+      setIsLoading(true);
       try {
-        setQuizzes(JSON.parse(saved));
-      } catch {
+        const dbQuizzes = await firebaseDB.getQuizzes();
+        setQuizzes(dbQuizzes.length > 0 ? dbQuizzes : mockQuizzes);
+      } catch (err) {
+        console.error("Failed to fetch quizzes", err);
         setQuizzes(mockQuizzes);
       }
-    } else {
-      setQuizzes(mockQuizzes);
-    }
+      setIsLoading(false);
+    };
+    fetchQuizzes();
   }, []);
 
   const filteredQuizzes = activeCategory === 'All' 
@@ -71,7 +75,7 @@ export default function Quizzes() {
       <div className="bg-slate-900 pt-16 pb-24 text-center px-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 mix-blend-overlay"></div>
         <div className="relative z-10 max-w-4xl mx-auto">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/20 text-brand-light font-medium text-sm mb-6">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-white/20 text-brand-light font-medium text-sm mb-6">
             <Star size={16} className="fill-brand-light" /> Try our new Interactive Quizzes
           </motion.div>
           <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="text-4xl md:text-5xl font-black text-white mb-6">
@@ -103,9 +107,14 @@ export default function Quizzes() {
         </div>
 
         {/* Quiz Grid */}
+        {isLoading ? (
+        <div className="flex justify-center p-20">
+          <Loader2 className="animate-spin text-brand-primary w-10 h-10" />
+        </div>
+      ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredQuizzes.map((quiz, index) => {
-            const Icon = quiz.icon;
+            const Icon = quiz.icon || Brain;
             return (
               <motion.div 
                 key={quiz.id}
@@ -118,7 +127,7 @@ export default function Quizzes() {
                 <div className="absolute -top-12 -right-12 w-32 h-32 bg-gradient-to-br from-brand-primary/5 to-transparent rounded-full group-hover:scale-150 transition-transform duration-500"></div>
 
                 <div className="flex justify-between items-start mb-6 relative z-10">
-                  <div className={`w-14 h-14 rounded-2xl ${quiz.bg} ${quiz.color} flex items-center justify-center`}>
+                  <div className={`w-14 h-14 rounded-2xl ${quiz.bg || 'bg-indigo-50'} ${quiz.color || 'text-indigo-500'} flex items-center justify-center`}>
                     <Icon size={28} />
                   </div>
                   <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded-full uppercase tracking-wider">
@@ -158,6 +167,7 @@ export default function Quizzes() {
             );
           })}
         </div>
+      )}
 
       </div>
     </div>

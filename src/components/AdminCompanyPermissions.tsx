@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { firebaseDB } from '../services/firebaseService';
 import { Shield, Check, X, Search, Building } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -8,52 +9,45 @@ export function AdminCompanyPermissions() {
   const [requests, setRequests] = useState<any[]>([]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('mock_company_permissions');
-    if (saved) {
-      try {
-        setCompanies(JSON.parse(saved));
-      } catch {
-        setCompanies([]);
-      }
-    } else {
-      const initial = [
-        { id: 'c-1', name: 'Google', domain: 'google.com', activeUsers: 1450, permissions: { mockInterviews: true, quizzes: true, contests: true } },
-        { id: 'c-2', name: 'Amazon', domain: 'amazon.com', activeUsers: 890, permissions: { mockInterviews: true, quizzes: false, contests: true } },
-        { id: 'c-3', name: 'Microsoft', domain: 'microsoft.com', activeUsers: 2100, permissions: { mockInterviews: true, quizzes: true, contests: false } },
-        { id: 'c-4', name: 'Startup Inc', domain: 'startup.io', activeUsers: 45, permissions: { mockInterviews: false, quizzes: false, contests: false } },
-      ];
-      setCompanies(initial);
-      localStorage.setItem('mock_company_permissions', JSON.stringify(initial));
-    }
+    async function loadData() {
+      const data = await firebaseDB.getCompanyPermissions();
+      let perms = data.permissions || [];
+      let reqs = data.requests || [];
 
-    const savedRequests = localStorage.getItem('mock_company_requests');
-    if (savedRequests) {
-      try {
-        setRequests(JSON.parse(savedRequests));
-      } catch {
-        setRequests([]);
+      if (perms.length === 0) {
+        perms = [
+          { id: 'c-1', name: 'Google', domain: 'google.com', activeUsers: 1450, permissions: { mockInterviews: true, quizzes: true, contests: true } },
+          { id: 'c-2', name: 'Amazon', domain: 'amazon.com', activeUsers: 890, permissions: { mockInterviews: true, quizzes: false, contests: true } },
+          { id: 'c-3', name: 'Microsoft', domain: 'microsoft.com', activeUsers: 2100, permissions: { mockInterviews: true, quizzes: true, contests: false } },
+          { id: 'c-4', name: 'Startup Inc', domain: 'startup.io', activeUsers: 45, permissions: { mockInterviews: false, quizzes: false, contests: false } },
+        ];
       }
-    } else {
-      const initialReqs = [
-        { id: 'req-1', company: 'Startup Inc', domain: 'startup.io', type: 'mockInterviews', label: 'Mock Interviews', date: '2 hours ago' },
-        { id: 'req-2', company: 'Netflix', domain: 'netflix.com', type: 'contests', label: 'Host Contests', date: '1 day ago' },
-      ];
-      setRequests(initialReqs);
-      localStorage.setItem('mock_company_requests', JSON.stringify(initialReqs));
+
+      if (reqs.length === 0) {
+        reqs = [
+          { id: 'req-1', company: 'Startup Inc', domain: 'startup.io', type: 'mockInterviews', label: 'Mock Interviews', date: '2 hours ago' },
+          { id: 'req-2', company: 'Netflix', domain: 'netflix.com', type: 'contests', label: 'Host Contests', date: '1 day ago' },
+        ];
+      }
+
+      setCompanies(perms);
+      setRequests(reqs);
     }
+    loadData();
   }, []);
 
-  const saveToStorage = (data: any[]) => {
-    localStorage.setItem('mock_company_permissions', JSON.stringify(data));
+  const saveToStorage = async (data: any[], reqsData?: any[]) => {
     setCompanies(data);
+    if (reqsData) setRequests(reqsData);
+    await firebaseDB.saveCompanyPermissions({ permissions: data, requests: reqsData || requests });
   };
 
-  const saveRequests = (data: any[]) => {
-    localStorage.setItem('mock_company_requests', JSON.stringify(data));
+  const saveRequests = async (data: any[]) => {
     setRequests(data);
+    await firebaseDB.saveCompanyPermissions({ permissions: companies, requests: data });
   };
 
-  const togglePermission = (companyId: string, permissionType: string) => {
+  const togglePermission = async (companyId: string, permissionType: string) => {
     const updated = companies.map(c => {
       if (c.id === companyId) {
         return {
@@ -66,11 +60,10 @@ export function AdminCompanyPermissions() {
       }
       return c;
     });
-    saveToStorage(updated);
+    await saveToStorage(updated);
   };
 
-  const handleApprove = (req: any) => {
-    // Make sure company exists in companies array, if not add it
+  const handleApprove = async (req: any) => {
     let currentCompanies = [...companies];
     const existing = currentCompanies.find(c => c.domain === req.domain);
     
@@ -88,12 +81,12 @@ export function AdminCompanyPermissions() {
       });
     }
     
-    saveToStorage(currentCompanies);
-    saveRequests(requests.filter(r => r.id !== req.id));
+    const newRequests = requests.filter(r => r.id !== req.id);
+    await saveToStorage(currentCompanies, newRequests);
   };
 
-  const handleReject = (id: string) => {
-    saveRequests(requests.filter(r => r.id !== id));
+  const handleReject = async (id: string) => {
+    await saveRequests(requests.filter(r => r.id !== id));
   };
 
   const filteredCompanies = companies.filter(c => 
@@ -104,8 +97,8 @@ export function AdminCompanyPermissions() {
     <div className="flex-1 flex flex-col p-8 h-full overflow-auto">
       <div className="flex justify-between items-end mb-6">
         <div>
-          <h2 className="text-xl font-black text-slate-900">Company Permissions</h2>
-          <p className="text-sm text-slate-500 mt-1">Grant or revoke access for specific domains to create custom content.</p>
+          <h2 className="text-xl font-black text-slate-900 ">Company Permissions</h2>
+          <p className="text-sm text-slate-500  mt-1">Grant or revoke access for specific domains to create custom content.</p>
         </div>
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -113,24 +106,24 @@ export function AdminCompanyPermissions() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search domains..."
-            className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:border-brand-primary outline-none"
+            className="pl-10 pr-4 py-2 border border-slate-200  rounded-lg text-sm focus:border-brand-primary outline-none"
           />
         </div>
       </div>
 
       {requests.length > 0 && (
         <div className="mb-8">
-          <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider mb-4">Pending Requests</h3>
+          <h3 className="text-sm font-black text-slate-900  uppercase tracking-wider mb-4">Pending Requests</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {requests.map(req => (
-              <div key={req.id} className="bg-white border border-slate-200 rounded-xl p-5 flex items-center justify-between shadow-sm">
+              <div key={req.id} className="bg-white  border border-slate-200  rounded-xl p-5 flex items-center justify-between shadow-sm">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-500 flex items-center justify-center shrink-0">
                     <Shield size={18} />
                   </div>
                   <div>
-                    <p className="font-bold text-slate-900 text-sm">{req.company} <span className="text-slate-400 font-normal">wants to enable</span> {req.label}</p>
-                    <p className="text-xs text-slate-500 mt-1">{req.date} • @{req.domain}</p>
+                    <p className="font-bold text-slate-900  text-sm">{req.company} <span className="text-slate-400 font-normal">wants to enable</span> {req.label}</p>
+                    <p className="text-xs text-slate-500  mt-1">{req.date} • @{req.domain}</p>
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -147,11 +140,11 @@ export function AdminCompanyPermissions() {
         </div>
       )}
 
-      <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider mb-4">All Companies</h3>
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <h3 className="text-sm font-black text-slate-900  uppercase tracking-wider mb-4">All Companies</h3>
+      <div className="bg-white  rounded-2xl shadow-sm border border-slate-200  overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[11px] font-black uppercase tracking-wider">
+            <tr className="bg-slate-50 border-b border-slate-200  text-slate-500  text-[11px] font-black uppercase tracking-wider">
               <th className="px-6 py-4">Company & Domain</th>
               <th className="px-6 py-4 text-center">Mock Interviews</th>
               <th className="px-6 py-4 text-center">Custom Quizzes</th>
@@ -167,8 +160,8 @@ export function AdminCompanyPermissions() {
                       <Building size={18} />
                     </div>
                     <div>
-                      <p className="font-bold text-slate-900">{c.name}</p>
-                      <p className="text-xs text-slate-500 font-mono mt-0.5">@{c.domain}</p>
+                      <p className="font-bold text-slate-900 ">{c.name}</p>
+                      <p className="text-xs text-slate-500  font-mono mt-0.5">@{c.domain}</p>
                     </div>
                   </div>
                 </td>
@@ -221,7 +214,7 @@ function ToggleSwitch({ isOn, onToggle }: { isOn: boolean, onToggle: () => void 
         layout
         initial={false}
         animate={{ x: isOn ? 24 : 0 }}
-        className={`w-4 h-4 rounded-full shadow-sm flex items-center justify-center ${isOn ? 'bg-white text-brand-primary' : 'bg-white text-slate-300'}`}
+        className={`w-4 h-4 rounded-full shadow-sm flex items-center justify-center ${isOn ? 'bg-white  text-brand-primary' : 'bg-white  text-slate-300'}`}
       >
         {isOn ? <Check size={10} strokeWidth={4} /> : <X size={10} strokeWidth={4} />}
       </motion.div>

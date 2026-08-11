@@ -37,7 +37,7 @@ export default function StudentAnalyticsPanel({ isOpen, onClose, student }: Stud
             {/* Header */}
             <div className="bg-white px-8 py-6 border-b border-slate-100 flex items-center justify-between sticky top-0 z-10">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200/60 flex items-center justify-center text-[14px] font-black text-slate-500 shadow-inner">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-200 flex items-center justify-center text-[14px] font-black text-slate-500 shadow-inner">
                   {student.name.substring(0, 2).toUpperCase()}
                 </div>
                 <div>

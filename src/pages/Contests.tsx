@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabaseDB } from '../services/supabaseService';
+import { firebaseDB } from '../services/firebaseService';
 import { motion } from 'framer-motion';
 import {
   Trophy, Clock, Users, ArrowRight,
@@ -23,45 +23,6 @@ function useCountdown(targetSeconds: number) {
 }
 
 // ── Data ──────────────────────────────────────────────────────
-const upcoming = [
-  {
-    id: 1, title: 'Biweekly Contest 120',
-    date: 'Tomorrow, 8:00 PM', prize: '300 Glintos',
-    participants: '4,102', type: 'Rated', color: 'indigo',
-  },
-  {
-    id: 2, title: 'Glintspark Hiring Fair',
-    date: 'Jul 24, 10:00 AM', prize: 'Interview Call',
-    participants: '15,800', type: 'Hiring', color: 'purple',
-  },
-  {
-    id: 3, title: 'Algorithm Masters',
-    date: 'Jul 26, 4:00 PM', prize: '1,000 Glintos',
-    participants: '2,900', type: 'Rated', color: 'indigo',
-  },
-  {
-    id: 4, title: 'SQL Sprint Challenge',
-    date: 'Jul 28, 6:00 PM', prize: '500 Glintos',
-    participants: '3,100', type: 'Rated', color: 'indigo',
-  },
-  {
-    id: 5, title: 'Frontend Blitz',
-    date: 'Aug 1, 9:00 AM', prize: 'Internship Referral',
-    participants: '6,400', type: 'Hiring', color: 'purple',
-  },
-  {
-    id: 6, title: 'DSA Weekly Cup',
-    date: 'Aug 3, 7:00 PM', prize: '750 Glintos',
-    participants: '8,200', type: 'Rated', color: 'indigo',
-  },
-];
-
-const typeStyles: Record<string, string> = {
-  Rated:  'bg-indigo-50 text-brand-primary border-brand-primary/20',
-  Hiring: 'bg-purple-50 text-purple-600 border-purple-200',
-  Practice: 'bg-emerald-50 text-emerald-600 border-emerald-200',
-};
-
 const stats = [
   { label: 'Active Participants', value: '128K+', icon: Users },
   { label: 'Contests Held', value: '412', icon: Trophy },
@@ -75,33 +36,31 @@ export default function Contests() {
   const countdown = useCountdown(5085); // 01:24:45
 
   const [localContests, setLocalContests] = useState<any[]>([]);
-  const [deletedHc, setDeletedHc] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchContests = async () => {
       try {
-        const dbContests = await supabaseDB.getContests();
+        const dbContests = await firebaseDB.getContests();
         if (dbContests && dbContests.length > 0) {
           setLocalContests(dbContests);
-        } else {
-          const stored = JSON.parse(localStorage.getItem('glintspark_contests') || '[]');
-          setLocalContests(stored);
         }
       } catch (err) {
-        console.error("Failed to load contests from Supabase:", err);
-        const stored = JSON.parse(localStorage.getItem('glintspark_contests') || '[]');
-        setLocalContests(stored);
+        console.error("Failed to load contests from Firebase:", err);
       }
     };
     fetchContests();
-    const deleted = JSON.parse(localStorage.getItem('glintspark_deleted_hc') || '[]');
-    setDeletedHc(deleted);
   }, []);
 
   const isCompanyUser = user?._id === 'mock_company' || user?.role === 'company' || user?.email?.endsWith('@glintspark.team') || user?.email === 'company@glintspark.com';
 
-  const visibleUpcoming = upcoming.filter(c => !deletedHc.includes(c.id.toString()));
-  const allContests = isCompanyUser ? localContests : [...localContests, ...visibleUpcoming];
+  const now = Date.now();
+  const allContests = localContests.filter(contest => {
+    if (!contest.date) return true;
+    const durationMins = contest.duration || 20; // Default to 20 mins for old tests
+    const contestStart = new Date(contest.date).getTime();
+    const contestEnd = contestStart + (durationMins * 60 * 1000);
+    return now <= contestEnd;
+  });
 
   if (loading) {
     return (
@@ -161,12 +120,12 @@ export default function Contests() {
               initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
               className="flex flex-wrap gap-4 mt-10"
             >
-              <button
-                onClick={() => document.getElementById('upcoming')?.scrollIntoView({ behavior: 'smooth' })}
+              <Link
+                to="/contests/manage"
                 className="px-8 py-3.5 bg-brand-primary text-white font-bold rounded text-sm hover:bg-brand-dark transition shadow-lg shadow-brand-primary/30 flex items-center gap-2 active:scale-95 uppercase tracking-widest"
               >
-                Explore Contests <ArrowRight size={16} />
-              </button>
+                Manage Contests <ArrowRight size={16} />
+              </Link>
               <Link to="/contests/create" className="px-8 py-3.5 bg-white/10 border border-white/20 text-white font-bold rounded text-sm hover:bg-white/20 transition flex items-center gap-2 backdrop-blur-md uppercase tracking-widest">
                 Create Contest <Plus size={16} />
               </Link>
@@ -175,22 +134,7 @@ export default function Contests() {
         </div>
       </div>
 
-        {/* Stats bar */}
-        <div className="border-t border-slate-100 bg-slate-50">
-          <div className="max-w-7xl mx-auto px-8 py-5 grid grid-cols-2 md:grid-cols-4 gap-6">
-            {stats.map(({ label, value, icon: Icon }) => (
-              <div key={label} className="flex items-center gap-3">
-                <div className="w-9 h-9 bg-brand-primary/10 rounded-lg flex items-center justify-center shrink-0">
-                  <Icon size={16} className="text-brand-primary" />
-                </div>
-                <div>
-                  <div className="text-slate-900 font-black text-lg leading-none">{value}</div>
-                  <div className="text-slate-500 text-[11px] mt-0.5">{label}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+
 
       {/* ══════════════════════════════════════════════
           UPCOMING EVENTS
@@ -222,7 +166,7 @@ export default function Contests() {
               whileHover={{ y: -6, boxShadow: '0 20px 40px rgba(99,102,241,0.15)' }}
               className="relative p-[1px] rounded-[24px] bg-gradient-to-b from-slate-200 to-slate-100 hover:from-brand-primary hover:to-purple-500 transition-all duration-500 group"
             >
-              <div className="bg-white/95 backdrop-blur-xl rounded-[23px] p-7 h-full flex flex-col justify-between transition-all duration-500 relative overflow-hidden">
+              <div className="bg-white backdrop-blur-xl rounded-[23px] p-7 h-full flex flex-col justify-between transition-all duration-500 relative overflow-hidden">
                 <div className="absolute -top-20 -right-20 w-48 h-48 bg-gradient-to-br from-brand-primary/5 to-purple-500/5 blur-3xl rounded-full group-hover:from-brand-primary/20 group-hover:to-purple-500/20 transition-all duration-500"></div>
 
               {/* Card top */}

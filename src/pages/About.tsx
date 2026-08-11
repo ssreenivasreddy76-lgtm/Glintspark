@@ -221,11 +221,11 @@ export default function About() {
       {/* Commitment & CTA */}
       <section className="py-24 relative z-10 bg-indigo-600 text-white overflow-hidden text-center">
         <div className="absolute inset-0 z-0">
-          <div className="absolute top-[-50%] left-[-10%] w-[50%] h-[200%] bg-white/5 blur-[100px] rounded-full transform rotate-12" />
+          <div className="absolute top-[-50%] left-[-10%] w-[50%] h-[200%] bg-white blur-[100px] rounded-full transform rotate-12" />
         </div>
         
         <div className="max-w-3xl mx-auto px-6 relative z-10">
-          <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-8 backdrop-blur-sm border border-white/20">
+          <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-8 backdrop-blur-sm border border-white/20">
             <Rocket size={32} className="text-white" />
           </div>
           <h2 className="text-4xl font-black tracking-tight mb-8">Our Commitment</h2>

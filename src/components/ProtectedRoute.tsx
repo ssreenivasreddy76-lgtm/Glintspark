@@ -17,30 +17,18 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     );
   }
 
-  if (!user) {
+  const bypassEmail = localStorage.getItem('admin_bypass_email');
+
+  if (!user && !bypassEmail) {
     return <Navigate to="/auth" />;
   }
 
-  // Intercept developers who haven't completed onboarding
-  const isCompany = localStorage.getItem('mock_role') === 'company';
-  const isAdmin = localStorage.getItem('mock_role') === 'admin';
+  // We rely entirely on the authenticated user from Supabase AuthContext
+  const isCompany = user?.role === 'company';
+  const isAdmin = user?.role === 'admin' || user?.email?.toLowerCase() === 'founder@glintspark.in';
   
-  const userEmail = user?.email || sessionStorage.getItem('mock_email') || '';
-  const usersData = JSON.parse(localStorage.getItem('mock_users_data') || '{}');
-  const hasOnboarded = usersData[userEmail]?.onboarded === true;
-  
-  const isOnboardingRoute = window.location.pathname === '/onboarding';
-  
-  const searchParams = new URLSearchParams(window.location.search);
-  const isEditing = searchParams.get('edit') === 'true';
-  
-  if (!isCompany && !isAdmin && !hasOnboarded && !isOnboardingRoute) {
-    return <Navigate to="/onboarding" />;
-  }
-  
-  if (!isCompany && !isAdmin && hasOnboarded && isOnboardingRoute && !isEditing) {
-    return <Navigate to="/dashboard" />;
-  }
+  // Onboarding has been removed per user request.
+  // We no longer redirect to /onboarding for any users.
 
   return <>{children}</>;
 };

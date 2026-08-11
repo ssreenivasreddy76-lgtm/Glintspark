@@ -73,7 +73,7 @@ export default function CompanyProfile() {
         {/* Left Column - Main Content */}
         <div className="flex-1">
           {/* Custom Tabs */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-2 mb-6 inline-flex flex-wrap gap-2">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-2 mb-6 inline-flex flex-wrap gap-2">
             {[
               { id: 'about', label: 'About Company', icon: Building2 },
               { id: 'jobs', label: 'Active Listings', icon: Briefcase },
@@ -102,7 +102,7 @@ export default function CompanyProfile() {
           >
             {activeTab === 'about' && (
               <div className="space-y-6">
-                <div className="bg-white rounded-[24px] shadow-sm border border-slate-200/80 p-8">
+                <div className="bg-white rounded-[24px] shadow-sm border border-slate-200 p-8">
                   <div className="flex items-center justify-between mb-6">
                     <h2 className="text-xl font-black text-slate-900">Company Overview</h2>
                     <button className="text-brand-primary hover:text-brand-light font-bold text-sm flex items-center gap-1"><Edit3 size={14}/> Edit</button>
@@ -148,7 +148,7 @@ export default function CompanyProfile() {
                   { title: 'Backend Developer (Node.js)', type: 'Full-time', location: 'San Francisco, CA', applicants: 89 },
                   { title: 'Cloud Infrastructure Architect', type: 'Contract', location: 'Hybrid', applicants: 42 }
                 ].map((job, i) => (
-                  <div key={i} className="bg-white rounded-[24px] shadow-sm border border-slate-200/80 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-brand-primary/30 transition-colors group cursor-pointer">
+                  <div key={i} className="bg-white rounded-[24px] shadow-sm border border-slate-200 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-brand-primary/30 transition-colors group cursor-pointer">
                     <div>
                       <h3 className="text-lg font-black text-slate-900 group-hover:text-brand-primary transition-colors">{job.title}</h3>
                       <div className="flex items-center gap-3 mt-2 text-sm font-semibold text-slate-500">
@@ -171,7 +171,7 @@ export default function CompanyProfile() {
             )}
 
             {activeTab === 'criteria' && (
-              <div className="bg-white rounded-[24px] shadow-sm border border-slate-200/80 p-8">
+              <div className="bg-white rounded-[24px] shadow-sm border border-slate-200 p-8">
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-xl font-black text-slate-900">Preferred Tech Stack & Criteria</h2>
                   <button className="text-brand-primary hover:text-brand-light font-bold text-sm flex items-center gap-1"><Edit3 size={14}/> Edit</button>
@@ -206,7 +206,7 @@ export default function CompanyProfile() {
 
         {/* Right Column - Stats Widget */}
         <div className="w-full lg:w-80 shrink-0">
-          <div className="bg-white rounded-[24px] shadow-sm border border-slate-200/80 p-6 sticky top-24">
+          <div className="bg-white rounded-[24px] shadow-sm border border-slate-200 p-6 sticky top-24">
             <h3 className="font-black text-slate-900 mb-6">Company Engagement</h3>
             
             <div className="space-y-5">

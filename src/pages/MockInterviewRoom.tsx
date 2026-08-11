@@ -14,7 +14,9 @@ import {
 } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { supabaseDB } from '../services/supabaseService';
+import { firebaseDB } from '../services/firebaseService';
 import { useAuth } from '../contexts/AuthContext';
+import { selectNextQuestion } from '../utils/interviewEngine';
 
 interface Message {
   id: string;
@@ -86,6 +88,32 @@ export default function MockInterviewRoom() {
   const [reportData, setReportData] = useState<any>(null);
   const [interviewer, setInterviewer] = useState<Interviewer>(INTERVIEWERS[0]);
   const { user } = useAuth();
+
+  // Adaptive Interview State Tracking
+  const [mockBank, setMockBank] = useState<any[]>([]);
+  const [topicsList, setTopicsList] = useState<string[]>([]);
+  const [currentTopicIdx, setCurrentTopicIdx] = useState(0);
+  const [currentDifficulty, setCurrentDifficulty] = useState('Easy');
+  const [askedQIds, setAskedQIds] = useState<string[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState<any | null>(null);
+
+  // Load Question Bank on Mount
+  useEffect(() => {
+    const fetchBank = async () => {
+      try {
+        const bank = await firebaseDB.getInterviewBank();
+        if (bank && bank.length > 0) {
+          setMockBank(bank);
+          // Extract unique topics in order of appearance
+          const topics = [...new Set(bank.map((q: any) => q.topic))].filter(Boolean) as string[];
+          setTopicsList(topics);
+        }
+      } catch (e) {
+        console.error("Failed to load interview bank", e);
+      }
+    };
+    fetchBank();
+  }, []);
 
   // Async video recording states (Feature 5)
   const [interviewMode, setInterviewMode] = useState<'live' | 'async'>('live');
@@ -217,29 +245,33 @@ export default function MockInterviewRoom() {
     }, 3000);
   };
 
-  // Helper for resilient API calls
+  // Helper for resilient API calls using native Gemini API
   const callGeminiAPI = async (prompt: string) => {
-    const { data: { session } } = await supabaseDB.supabase.auth.getSession();
-    const token = session?.access_token;
-    if (!token) throw new Error("No active session. Please sign in to use the AI interviewer.");
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) throw new Error("Gemini API Key is missing. Please add VITE_GEMINI_API_KEY to your .env file.");
 
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
-    const response = await fetch(`${apiUrl}/api/ai/chat`, {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+        }
+      })
     });
 
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({ error: "Go API error" }));
-      throw new Error(errData.error || `Proxy failed with status ${response.status}`);
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData?.error?.message || `Gemini API failed with status ${response.status}`);
     }
 
     const data = await response.json();
-    return data.text;
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
   };
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
@@ -261,33 +293,56 @@ export default function MockInterviewRoom() {
   const speakAI = (text: string) => {
     if (!window.speechSynthesis) return;
     window.speechSynthesis.cancel();
+    
     const utterance = new SpeechSynthesisUtterance(text);
-
-    // Attempt to find a high-quality natural voice
-    const voices = window.speechSynthesis.getVoices();
-    const premiumVoice = voices.find(v => v.name.includes('Google') || v.name.includes('Natural')) || voices[0];
-    if (premiumVoice) utterance.voice = premiumVoice;
-
-    utterance.rate = 0.95; // Slightly slower for clarity
+    utterance.rate = 0.95; 
     utterance.pitch = 1;
 
-    setIsAISpeaking(true);
-    utterance.onend = () => {
-      setIsAISpeaking(false);
-      console.log("AI finished speaking. Beginning listening mode...");
-      startListening();
+    const playVoice = () => {
+      const voices = window.speechSynthesis.getVoices();
+      // Try to find a reliable English voice, prioritize Google voices
+      const premiumVoice = voices.find(v => v.name.includes('Google US English')) 
+        || voices.find(v => v.name.includes('Google') && v.lang.startsWith('en')) 
+        || voices.find(v => v.lang.startsWith('en')) 
+        || voices[0];
+        
+      if (premiumVoice) utterance.voice = premiumVoice;
+
+      setIsAISpeaking(true);
+      utterance.onend = () => {
+        setIsAISpeaking(false);
+        console.log("AI finished speaking. Beginning listening mode...");
+        startListening();
+      };
+
+      // Fallback: Ensure listening starts even if onend doesn't fire correctly
+      const safetyTimeout = setTimeout(() => {
+        if (!isListening && !isAISpeaking) startListening();
+      }, (text.length * 100) + 2000);
+
+      utterance.addEventListener('end', () => clearTimeout(safetyTimeout));
+      window.speechSynthesis.speak(utterance);
     };
 
-    // Fallback: Ensure listening starts even if onend doesn't fire correctly
-    const safetyTimeout = setTimeout(() => {
-      if (!isListening && !isAISpeaking) startListening();
-    }, (text.length * 100) + 2000);
+    // Load voices safely (Chrome often returns empty on first call)
+    if (window.speechSynthesis.getVoices().length > 0) {
+      playVoice();
+    } else {
+      window.speechSynthesis.onvoiceschanged = () => {
+        playVoice();
+        window.speechSynthesis.onvoiceschanged = null;
+      };
+      // Fallback just in case event doesn't fire
+      setTimeout(() => {
+        if (!isAISpeaking) playVoice();
+      }, 500);
+    }
+  };
 
-    window.speechSynthesis.speak(utterance);
-    return () => {
-      clearTimeout(safetyTimeout);
-      setIsAISpeaking(false);
-    };
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
   };
 
   // 1. SPEECH RECOGNITION (User Voice)
@@ -301,6 +356,7 @@ export default function MockInterviewRoom() {
 
     const SpeechRecognition = (window as any).webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
+    recognitionRef.current = recognition;
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
@@ -350,28 +406,61 @@ export default function MockInterviewRoom() {
     setMessages(prev => [...prev, thinkingMsg]);
 
     try {
-      // Include history to prevent repetition
       const historyStr = messages.slice(-5).map(m => `${m.role === 'ai' ? 'Interviewer' : 'Candidate'}: ${m.text}`).join('\n');
 
+      // 1. Evaluate Candidate Answer
+      const evalPrompt = `Evaluate the candidate's answer based on the Expected Answer. 
+      Question: "${currentQuestion?.question}"
+      Expected Answer: "${currentQuestion?.expectedAnswer}"
+      Keywords: "${currentQuestion?.keywords}"
+      Candidate Answer: "${answer}"
+      
+      Return ONLY a raw JSON object (no markdown, no backticks) with this schema:
+      {"score": number (0-100), "feedback": "Brief 1-sentence feedback to say to candidate"}`;
+      
+      let score = 50;
+      let feedback = "Interesting perspective.";
+      try {
+        const rawEval = await callGeminiAPI(evalPrompt);
+        const cleanEval = rawEval.replace(/```json/g, '').replace(/```/g, '').trim();
+        const evalJson = JSON.parse(cleanEval);
+        score = evalJson.score;
+        feedback = evalJson.feedback;
+      } catch (e) {
+        console.error("Evaluation error", e);
+      }
+
+      // 2. Select Next Question
+      const nextSelection = selectNextQuestion(
+        mockBank, topicsList, topicsList[currentTopicIdx], currentDifficulty, askedQIds, score
+      );
+
+      let nextQText = "That concludes our technical questions.";
+      if (nextSelection) {
+        setCurrentTopicIdx(topicsList.indexOf(nextSelection.topic));
+        setCurrentDifficulty(nextSelection.difficulty);
+        setCurrentQuestion(nextSelection.question);
+        setAskedQIds(prev => [...prev, nextSelection.question.id]);
+        nextQText = nextSelection.question.question;
+        
+        // Feature: Trigger IDE if coding keywords found
+        const kw = (nextSelection.question.keywords || '').toLowerCase();
+        if (kw.includes('code') || kw.includes('program') || kw.includes('write a function')) {
+          setShowIDE(true);
+        }
+      } else {
+        setTimeout(() => endSession(), 5000);
+      }
+
+      // 3. Generate Interviewer Response (Feedback + Next Question)
       const prompt = `You are ${interviewer.name}, a ${interviewer.role}. 
       Personality: ${interviewer.personality}
       Tone: ${interviewer.tone}
-      Goals: ${interviewer.goals.join(', ')}
-      
-      ROLE: ${type} (Ensure ALL questions are specific to this role)
-      
-      CONTEXT HISTORY:
-      ${historyStr}
-      
-      CANDIDATE JUST SAID: "${answer}"
       
       INSTRUCTIONS:
-      1. Acknowledge their response according to your personality.
-      2. Briefly critique or highlight a specific technical point in their answer.
-      3. ASK THE NEXT CHALLENGING QUESTION.
-      4. IMPORTANT: Do NOT repeat topics already discussed in the HISTORY. Move to a NEW technical or behavioral sub-topic related to ${type}.
-      5. Increase the difficulty slightly as we are deeper in the interview.
-      6. Stay in character. 3 sentences max.`;
+      1. Deliver this exact feedback to the candidate naturally: "${feedback}"
+      2. Then IMMEDIATELY ASK this exact next question: "${nextQText}"
+      3. Do NOT make up your own questions. Combine the feedback and the next question smoothly in 2-3 sentences max.`;
 
       const aiResponse = await callGeminiAPI(prompt);
 
@@ -396,6 +485,84 @@ export default function MockInterviewRoom() {
         id: 'err', role: 'ai', text: errorMsg, timestamp: new Date()
       }));
       speakAI(errorMsg);
+    }
+  };
+
+  const handleRunCode = async () => {
+    if (!code.trim() || !currentQuestion) return;
+    setShowIDE(false);
+    
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', text: `[Submitted Code Solution]\n\`\`\`c\n${code}\n\`\`\``, timestamp: new Date() };
+    setMessages(prev => [...prev, userMsg]);
+
+    const thinkingMsg: Message = { id: 'thinking', role: 'ai', text: 'Compiling and analyzing code...', timestamp: new Date() };
+    setMessages(prev => [...prev, thinkingMsg]);
+
+    try {
+      // 1. Evaluate Code
+      const codeEvalPrompt = `You are a strict C compiler and technical evaluator.
+      Question: "${currentQuestion.question}"
+      Expected Answer/Logic: "${currentQuestion.expectedAnswer}"
+      
+      Candidate Code:
+      ${code}
+      
+      Evaluate the code on: 1) Compilation/Syntax 2) Correctness 3) Time/Space Complexity 4) Code Quality.
+      Return ONLY a raw JSON object with this schema:
+      {"score": number (0-100), "feedback": "Brief 1-sentence feedback summarizing the code execution result"}`;
+      
+      let score = 50;
+      let feedback = "Your code has some issues.";
+      try {
+        const rawEval = await callGeminiAPI(codeEvalPrompt);
+        const cleanEval = rawEval.replace(/```json/g, '').replace(/```/g, '').trim();
+        const evalJson = JSON.parse(cleanEval);
+        score = evalJson.score;
+        feedback = evalJson.feedback;
+      } catch (e) {
+        console.error("Code Eval error", e);
+      }
+
+      // 2. Select Next Question
+      const nextSelection = selectNextQuestion(
+        mockBank, topicsList, topicsList[currentTopicIdx], currentDifficulty, askedQIds, score
+      );
+
+      let nextQText = "That concludes our technical coding questions.";
+      if (nextSelection) {
+        setCurrentTopicIdx(topicsList.indexOf(nextSelection.topic));
+        setCurrentDifficulty(nextSelection.difficulty);
+        setCurrentQuestion(nextSelection.question);
+        setAskedQIds(prev => [...prev, nextSelection.question.id]);
+        nextQText = nextSelection.question.question;
+      } else {
+        setTimeout(() => endSession(), 5000);
+      }
+
+      // 3. Formulate AI verbal response
+      const prompt = `You are ${interviewer.name}, a ${interviewer.role}. 
+      Personality: ${interviewer.personality}
+      Tone: ${interviewer.tone}
+      
+      INSTRUCTIONS:
+      1. Deliver this exact code evaluation feedback naturally: "${feedback}"
+      2. Then IMMEDIATELY ASK this exact next question: "${nextQText}"
+      3. Combine them smoothly in 2-3 sentences.`;
+
+      const aiResponse = await callGeminiAPI(prompt);
+
+      setMessages(prev => prev.filter(m => m.id !== 'thinking').concat({
+        id: Date.now().toString(),
+        role: 'ai',
+        text: aiResponse,
+        timestamp: new Date()
+      }));
+
+      speakAI(aiResponse);
+
+    } catch (err: any) {
+      console.error(err);
+      setMessages(prev => prev.filter(m => m.id !== 'thinking'));
     }
   };
 
@@ -547,26 +714,37 @@ export default function MockInterviewRoom() {
       return;
     }
 
+    const normalizedType = type?.toLowerCase().replace(/-/g, ' ');
+    const matchedTopic = topicsList.find(t => t.toLowerCase() === normalizedType) || topicsList[0];
+    const initialSelection = selectNextQuestion(mockBank, topicsList, matchedTopic, 'Medium', []);
+    let firstQText = "Welcome to the Mock Interview.";
+    if (initialSelection) {
+      setCurrentTopicIdx(topicsList.indexOf(initialSelection.topic));
+      setCurrentDifficulty(initialSelection.difficulty);
+      setCurrentQuestion(initialSelection.question);
+      setAskedQIds([initialSelection.question.id]);
+      firstQText = initialSelection.question.question;
+    }
+
     const startPrompt = `You are ${randomInterviewer.name}, a ${randomInterviewer.role}. 
     Personality: ${randomInterviewer.personality}
     Tone: ${randomInterviewer.tone}
     Goals: ${randomInterviewer.goals.join(', ')}
     
-    You are interviewing a candidate for a ${type} position. 
-    Start the interview immediately with a specific, challenging technical or behavioral question.
-    Professional greeting and 1st question only. 2 sentences max.`;
+    You are starting an adaptive interview on Topic: ${initialSelection?.topic || 'General'}.
+    
+    INSTRUCTIONS:
+    1. Start the interview with a very brief professional greeting (1 sentence).
+    2. IMMEDIATELY ASK the exact question below:
+    "${firstQText}"
+    3. STRICT RULE: Do NOT make up your own questions. Only ask the question provided above.`;
 
     try {
-      const firstQuestion = await callGeminiAPI(startPrompt);
-      setMessages([{ id: 'start', role: 'ai', text: firstQuestion, timestamp: new Date() }]);
-      speakAI(firstQuestion);
+      const firstResponse = await callGeminiAPI(startPrompt);
+      setMessages([{ id: 'start', role: 'ai', text: firstResponse, timestamp: new Date() }]);
+      speakAI(firstResponse);
     } catch (e: any) {
-      const fallbackQuestions: { [key: string]: string } = {
-        'frontend-developer': `Hi, I'm ${randomInterviewer.name}. Let's start with your frontend experience. Can you explain the difference between state and props in React, and when you would choose one over the other?`,
-        'backend-developer': `Hi, I'm ${randomInterviewer.name}. To begin, can you explain the architectural differences between SQL and NoSQL databases and how you choose between them for a scaling application?`,
-        'dsa-practice': `Hello. I'm ${randomInterviewer.name}. Let's start with a classic technical challenge. Can you explain the time and space complexity of a Quick Sort algorithm versus a Merge Sort?`,
-      };
-      const fallbackMsg = fallbackQuestions[type!] || `Welcome, I'm ${randomInterviewer.name}. Let's start by having you introduce yourself and your technical background. What projects have you worked on recently?`;
+      const fallbackMsg = `Welcome, I'm ${randomInterviewer.name}. ${firstQText}`;
       setMessages([{ id: 'start', role: 'ai', text: fallbackMsg, timestamp: new Date() }]);
       speakAI(fallbackMsg);
     }
@@ -669,6 +847,48 @@ export default function MockInterviewRoom() {
   };
 
   // --- RENDERING LOGIC ---
+  const normType = (type || '').toLowerCase();
+  const isCInterview = normType === 'c' || normType.includes('c-programming') || normType.includes('c_programming');
+
+  if (!isCInterview) {
+    const formattedName = type ? type.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Mock Interview';
+    return (
+      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center p-6 text-slate-900 relative overflow-hidden font-sans">
+        {/* Soft background glow */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-400/10 blur-[140px] rounded-full pointer-events-none" />
+        <div className="absolute top-1/4 right-1/4 w-[350px] h-[350px] bg-cyan-400/10 blur-[120px] rounded-full pointer-events-none" />
+
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-md w-full bg-white border border-slate-200 rounded-[32px] p-8 text-center relative z-10 shadow-[0_20px_60px_rgba(0,0,0,0.06)]"
+        >
+          <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-blue-100 shadow-sm">
+            <Sparkles size={32} className="animate-pulse text-blue-600" />
+          </div>
+
+          <span className="px-3.5 py-1.5 bg-amber-50 text-amber-700 border border-amber-200/80 text-xs font-black uppercase tracking-widest rounded-full inline-block mb-4">
+            Under Construction 🛠️
+          </span>
+
+          <h2 className="text-3xl font-black tracking-tight text-slate-900 mb-3">
+            {formattedName}
+          </h2>
+
+          <p className="text-slate-500 text-sm leading-relaxed mb-8 font-medium">
+            This AI mock interview module is currently under construction and being prepared by our engineering team. Only <span className="text-blue-600 font-bold">C Programming</span> is currently live.
+          </p>
+
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="w-full py-4 bg-slate-900 hover:bg-gradient-to-r hover:from-blue-600 hover:to-cyan-600 text-white rounded-xl text-sm font-black uppercase tracking-widest transition-all duration-300 shadow-md hover:shadow-xl hover:shadow-blue-500/25 flex items-center justify-center gap-2"
+          >
+            Return to Dashboard <ArrowRight size={16} />
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
 
   // STEP 1: Instructions (Professional Briefing Theme)
   if (step === 'instructions') {
@@ -822,7 +1042,7 @@ export default function MockInterviewRoom() {
               />
               {!isCameraGranted && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-slate-900/80 backdrop-blur-sm">
-                  <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mb-4 border border-white/10">
+                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center mb-4 border border-white/10">
                     {isRequesting ? (
                       <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                     ) : (
@@ -1074,7 +1294,7 @@ export default function MockInterviewRoom() {
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Core Strengths</span>
                   <div className="space-y-4">
                     {reportData?.strengths?.map((s: string, i: number) => (
-                      <div key={i} className="flex items-start gap-4 p-4 bg-white/5 border border-white/5 rounded-2xl">
+                      <div key={i} className="flex items-start gap-4 p-4 bg-white border border-white/5 rounded-2xl">
                         <CheckCircle2 size={16} className="text-emerald-500 mt-0.5 shrink-0" />
                         <span className="text-[11px] font-bold text-slate-300 leading-relaxed">{s}</span>
                       </div>
@@ -1086,7 +1306,7 @@ export default function MockInterviewRoom() {
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Growth Roadmap</span>
                   <div className="flex flex-wrap gap-2">
                     {reportData?.recommendedTopics?.map((t: string, i: number) => (
-                      <span key={i} className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase text-slate-400 hover:bg-brand-primary hover:text-white hover:border-brand-primary transition cursor-pointer">
+                      <span key={i} className="px-4 py-2 bg-white border border-white/10 rounded-xl text-[10px] font-black uppercase text-slate-400 hover:bg-brand-primary hover:text-white hover:border-brand-primary transition cursor-pointer">
                         {t}
                       </span>
                     ))}
@@ -1378,7 +1598,7 @@ export default function MockInterviewRoom() {
                   </div>
                 </div>
 
-                <div className="p-4 bg-white/5 border border-white/5 rounded-2xl">
+                <div className="p-4 bg-white border border-white/5 rounded-2xl">
                   <p className="text-[11px] font-medium text-white/70 leading-relaxed italic">
                     "{interviewer.personality}"
                   </p>
@@ -1398,7 +1618,7 @@ export default function MockInterviewRoom() {
               
               {isCamOff && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900">
-                  <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center border border-white/10 text-white/20 mb-4">
+                  <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center border border-white/10 text-white/20 mb-4">
                     <User size={32} />
                   </div>
                   <span className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em]">Video Stream Paused</span>
@@ -1461,15 +1681,13 @@ export default function MockInterviewRoom() {
       <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3">
         <div className="bg-white border border-slate-200 rounded-full px-4 py-2 flex items-center gap-2 shadow-[0_20px_50px_rgba(0,0,0,0.1)]">
           <button 
-            onClick={() => !isListening && startListening()}
-            className={`p-4 rounded-full transition-all group relative ${isListening ? 'bg-brand-primary text-white scale-110 shadow-lg shadow-brand-primary/40' : 'bg-slate-900 text-white hover:bg-black'}`}
+            onClick={() => isListening ? stopListening() : startListening()}
+            className={`p-4 rounded-full transition-all group relative ${isListening ? 'bg-brand-primary text-white scale-110 shadow-lg shadow-brand-primary/40 animate-pulse' : 'bg-slate-900 text-white hover:bg-black'}`}
           >
             {isListening ? <Mic size={24} /> : <Mic size={24} />}
-            {!isListening && (
-              <span className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1 bg-slate-900 text-white text-[10px] font-black rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-                Speak Now
-              </span>
-            )}
+            <span className="absolute -top-12 left-1/2 -translate-x-1/2 px-3 py-1 bg-slate-900 text-white text-[10px] font-black rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+              {isListening ? "Click to Send" : "Speak Now"}
+            </span>
           </button>
           
           <div className="h-8 w-px bg-slate-100 mx-2" />
@@ -1528,7 +1746,7 @@ export default function MockInterviewRoom() {
                   <div className="w-2.5 h-2.5 rounded-full bg-amber-500/50" />
                   <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/50" />
                 </div>
-                <div className="h-px flex-1 bg-white/5" />
+                <div className="h-px flex-1 bg-white" />
                 <span className="text-[9px] font-mono text-white/20 uppercase tracking-widest italic">main.js</span>
               </div>
               <textarea 
@@ -1536,8 +1754,16 @@ export default function MockInterviewRoom() {
                 onChange={(e) => setCode(e.target.value)} 
                 spellCheck={false}
                 className="flex-1 bg-transparent rounded-2xl p-4 font-mono text-[13px] border-none focus:ring-0 text-emerald-100/90 resize-none leading-relaxed placeholder:text-white/10"
-                placeholder="// Type your code solution here..."
+                placeholder="// Type your C code solution here..."
               />
+              <div className="pt-4 border-t border-white/5 flex justify-end">
+                <button 
+                  onClick={handleRunCode}
+                  className="px-6 py-2.5 bg-brand-primary text-white text-[11px] font-black uppercase tracking-widest rounded-xl hover:bg-brand-dark transition-all flex items-center gap-2"
+                >
+                  <Play size={14} /> Run & Submit Code
+                </button>
+              </div>
             </div>
           </motion.div>
         )}

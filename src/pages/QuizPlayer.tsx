@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, ArrowRight, ArrowLeft, CheckCircle2, XCircle, Award, Trophy } from 'lucide-react';
 import { mockQuizzes } from './Quizzes';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../services/supabaseService';
+import { supabase, supabaseDB } from '../services/supabaseService';
+import { firebaseDB } from '../services/firebaseService';
 import { Logo } from '../components/Logo';
 
 // Mock questions for the 3 demo quizzes
@@ -68,44 +69,47 @@ export const MOCK_QUESTIONS: Record<string, any[]> = {
 export default function QuizPlayer() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const { user, updateUser } = useAuth();
   
   const [quizzesList, setQuizzesList] = useState<any[]>([]);
   const [questionsMap, setQuestionsMap] = useState<Record<string, any[]>>({});
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const savedQuizzes = localStorage.getItem('mock_quizzes');
-    if (savedQuizzes) {
+    const fetchData = async () => {
+      setIsLoading(true);
       try {
-        setQuizzesList(JSON.parse(savedQuizzes));
-      } catch {
-        setQuizzesList(mockQuizzes);
-      }
-    } else {
-      setQuizzesList(mockQuizzes);
-    }
+        const dbQuizzes = await firebaseDB.getQuizzes();
+        setQuizzesList(dbQuizzes.length > 0 ? dbQuizzes : mockQuizzes);
 
-    const savedQuestions = localStorage.getItem('mock_quiz_questions');
-    if (savedQuestions) {
-      try {
-        setQuestionsMap(JSON.parse(savedQuestions));
-      } catch {
+        const dbQuestions = await firebaseDB.getQuizQuestions();
+        setQuestionsMap(Object.keys(dbQuestions).length > 0 ? dbQuestions : MOCK_QUESTIONS);
+      } catch (err) {
+        console.error("Failed to fetch quizzes", err);
+        setQuizzesList(mockQuizzes);
         setQuestionsMap(MOCK_QUESTIONS);
       }
-    } else {
-      setQuestionsMap(MOCK_QUESTIONS);
-    }
+      setIsLoading(false);
+    };
+    fetchData();
   }, []);
 
   const quiz = quizzesList.find(q => q.id === id);
   const questions = questionsMap[id || ''] || [];
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [selectedOptions, setSelectedOptions] = useState<Record<number, number>>({});
+  const [selectedOptions, setSelectedOptions] = useState<Record<number, number[]>>({});
   const [isFinished, setIsFinished] = useState(false);
   
   // Timer state
-  const [timeLeft, setTimeLeft] = useState((quiz?.timeLimit || 15) * 60);
+  const [timeLeft, setTimeLeft] = useState(0);
+
+  useEffect(() => {
+    if (quiz && timeLeft === 0 && !isFinished && currentQuestionIndex === 0 && Object.keys(selectedOptions).length === 0) {
+      setTimeLeft((quiz.timeLimit || 15) * 60);
+    }
+  }, [quiz, timeLeft, isFinished, currentQuestionIndex, selectedOptions]);
 
   useEffect(() => {
     if (!quiz) return;
@@ -123,10 +127,28 @@ export default function QuizPlayer() {
   }, [timeLeft, isFinished, quiz]);
 
   const handleOptionSelect = (optionIndex: number) => {
-    setSelectedOptions({
-      ...selectedOptions,
-      [currentQuestionIndex]: optionIndex
-    });
+    const currentSelected = selectedOptions[currentQuestionIndex] || [];
+    const currentCorrect = questions[currentQuestionIndex].correctAnswer;
+    const isMultiChoice = Array.isArray(currentCorrect) && currentCorrect.length > 1;
+    
+    if (isMultiChoice) {
+      if (currentSelected.includes(optionIndex)) {
+        setSelectedOptions({
+          ...selectedOptions,
+          [currentQuestionIndex]: currentSelected.filter(i => i !== optionIndex)
+        });
+      } else {
+        setSelectedOptions({
+          ...selectedOptions,
+          [currentQuestionIndex]: [...currentSelected, optionIndex]
+        });
+      }
+    } else {
+      setSelectedOptions({
+        ...selectedOptions,
+        [currentQuestionIndex]: [optionIndex]
+      });
+    }
   };
 
   const handleNext = () => {
@@ -147,8 +169,15 @@ export default function QuizPlayer() {
     // Calculate score
     let score = 0;
     questions.forEach((q, idx) => {
-      if (selectedOptions[idx] === q.correctAnswer) {
-        score++;
+      const userAns = selectedOptions[idx] || [];
+      if (Array.isArray(q.correctAnswer)) {
+        if (userAns.length === q.correctAnswer.length && userAns.every(v => q.correctAnswer.includes(v))) {
+          score++;
+        }
+      } else {
+        if (userAns.length === 1 && userAns[0] === q.correctAnswer) {
+          score++;
+        }
       }
     });
 
@@ -158,15 +187,40 @@ export default function QuizPlayer() {
     if (percentage >= 0.5 && user) {
       const xpToAward = quiz?.xpReward || 50;
       try {
+        let updatedUser = { ...user, xp: (user.xp || 0) + xpToAward };
         await supabase
           .from('users')
-          .update({ xp: (user.xp || 0) + xpToAward })
+          .update({ xp: updatedUser.xp })
           .eq('id', user.id);
+
+        const lessonId = searchParams.get('lessonId');
+        if (lessonId) {
+          const currentCompleted = user.completedLessonIds || [];
+          if (!currentCompleted.includes(lessonId)) {
+            const newCompleted = [...currentCompleted, lessonId];
+            updatedUser = { ...updatedUser, completedLessonIds: newCompleted };
+            await supabaseDB.updateOne(user._id, { completedLessonIds: newCompleted });
+          }
+          // Emit event to other tabs
+          const channel = new BroadcastChannel('quiz_channel');
+          channel.postMessage({ type: 'QUIZ_COMPLETED', lessonId });
+          channel.close();
+        }
+        
+        updateUser(updatedUser);
       } catch (err) {
-        console.error("Failed to update XP:", err);
+        console.error("Failed to update XP or progress:", err);
       }
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 pt-24 pb-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary"></div>
+      </div>
+    );
+  }
 
   if (!quiz) {
     return (
@@ -187,8 +241,15 @@ export default function QuizPlayer() {
   if (isFinished) {
     let score = 0;
     questions.forEach((q, idx) => {
-      if (selectedOptions[idx] === q.correctAnswer) {
-        score++;
+      const userAns = selectedOptions[idx] || [];
+      if (Array.isArray(q.correctAnswer)) {
+        if (userAns.length === q.correctAnswer.length && userAns.every(v => q.correctAnswer.includes(v))) {
+          score++;
+        }
+      } else {
+        if (userAns.length === 1 && userAns[0] === q.correctAnswer) {
+          score++;
+        }
       }
     });
     const passed = (score / questions.length) >= 0.5;
@@ -201,7 +262,7 @@ export default function QuizPlayer() {
             <h1 className="text-4xl font-black mb-2">{passed ? 'Congratulations!' : 'Keep Practicing!'}</h1>
             <p className="text-lg opacity-90">You scored {score} out of {questions.length}</p>
             {passed && (
-              <div className="mt-6 inline-flex items-center gap-2 bg-white/20 px-6 py-3 rounded-full font-bold text-xl border border-white/30">
+              <div className="mt-6 inline-flex items-center gap-2 bg-white px-6 py-3 rounded-full font-bold text-xl border border-white/30">
                 <Award size={24} className="text-yellow-300" /> +{quiz.xpReward} XP Earned
               </div>
             )}
@@ -211,8 +272,14 @@ export default function QuizPlayer() {
             <h3 className="text-xl font-bold text-slate-900 mb-6 border-b pb-4">Detailed Breakdown</h3>
             <div className="space-y-6">
               {questions.map((q, idx) => {
-                const userAns = selectedOptions[idx];
-                const isCorrect = userAns === q.correctAnswer;
+                const userAns = selectedOptions[idx] || [];
+                let isCorrect = false;
+                const correctAnswers = Array.isArray(q.correctAnswer) ? q.correctAnswer : [q.correctAnswer];
+                if (Array.isArray(q.correctAnswer)) {
+                  isCorrect = userAns.length === q.correctAnswer.length && userAns.every(v => q.correctAnswer.includes(v));
+                } else {
+                  isCorrect = userAns.length === 1 && userAns[0] === q.correctAnswer;
+                }
                 
                 return (
                   <div key={idx} className={`p-6 rounded-xl border ${isCorrect ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>
@@ -223,16 +290,20 @@ export default function QuizPlayer() {
                       <div>
                         <h4 className="font-bold text-slate-800 mb-3">{idx + 1}. {q.question}</h4>
                         <div className="space-y-2">
-                          {q.options.map((opt: string, optIdx: number) => (
-                            <div key={optIdx} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-between
-                              ${optIdx === q.correctAnswer ? 'bg-emerald-500 text-white' : 
-                                optIdx === userAns && !isCorrect ? 'bg-red-500 text-white' : 'bg-white text-slate-600'}
-                            `}>
-                              {opt}
-                              {optIdx === q.correctAnswer && <span className="text-xs uppercase tracking-wider bg-black/20 px-2 py-0.5 rounded">Correct</span>}
-                              {optIdx === userAns && !isCorrect && <span className="text-xs uppercase tracking-wider bg-black/20 px-2 py-0.5 rounded">Your Answer</span>}
-                            </div>
-                          ))}
+                          {q.options.map((opt: string, optIdx: number) => {
+                            const isOptCorrect = correctAnswers.includes(optIdx);
+                            const isOptSelected = userAns.includes(optIdx);
+                            return (
+                              <div key={optIdx} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center justify-between
+                                ${isOptCorrect ? 'bg-emerald-500 text-white' : 
+                                  isOptSelected && !isOptCorrect ? 'bg-red-500 text-white' : 'bg-white text-slate-600'}
+                              `}>
+                                {opt}
+                                {isOptCorrect && <span className="text-xs uppercase tracking-wider bg-black/20 px-2 py-0.5 rounded">Correct</span>}
+                                {isOptSelected && !isOptCorrect && <span className="text-xs uppercase tracking-wider bg-black/20 px-2 py-0.5 rounded">Your Answer</span>}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
@@ -242,9 +313,19 @@ export default function QuizPlayer() {
             </div>
             
             <div className="mt-10 flex justify-center">
-              <button onClick={() => navigate('/quizzes')} className="px-8 py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-brand-primary transition-colors shadow-lg">
-                Return to Quizzes
-              </button>
+              {searchParams.get('newTab') === 'true' && passed ? (
+                <button onClick={() => window.close()} className="px-8 py-4 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors shadow-lg flex items-center gap-2">
+                  Close Window <CheckCircle2 size={20} />
+                </button>
+              ) : searchParams.get('returnTo') && passed ? (
+                <button onClick={() => navigate(searchParams.get('returnTo')!)} className="px-8 py-4 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors shadow-lg flex items-center gap-2">
+                  Return to Lesson <ArrowRight size={20} />
+                </button>
+              ) : (
+                <button onClick={() => navigate('/quizzes')} className="px-8 py-4 bg-slate-900 text-white font-bold rounded-xl hover:bg-brand-primary transition-colors shadow-lg">
+                  Return to Quizzes
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -287,7 +368,7 @@ export default function QuizPlayer() {
           </span>
           <div className="flex gap-1">
             {questions.map((_, idx) => (
-              <div key={idx} className={`w-2.5 h-2.5 rounded-full ${idx === currentQuestionIndex ? 'bg-brand-primary' : selectedOptions[idx] !== undefined ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+              <div key={idx} className={`w-2.5 h-2.5 rounded-full ${idx === currentQuestionIndex ? 'bg-brand-primary' : (selectedOptions[idx] && selectedOptions[idx].length > 0) ? 'bg-emerald-400' : 'bg-slate-200'}`} />
             ))}
           </div>
         </div>
@@ -307,7 +388,7 @@ export default function QuizPlayer() {
             
             <div className="space-y-4">
               {currentQ.options.map((option: string, idx: number) => {
-                const isSelected = selectedOptions[currentQuestionIndex] === idx;
+                const isSelected = selectedOptions[currentQuestionIndex]?.includes(idx);
                 return (
                   <button
                     key={idx}

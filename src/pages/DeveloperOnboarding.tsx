@@ -21,27 +21,22 @@ export const DeveloperOnboarding: React.FC = () => {
   const [skills, setSkills] = useState('');
   const [graduationYear, setGraduationYear] = useState('');
   const [backupEmail, setBackupEmail] = useState('');
+  const [leetcode, setLeetcode] = useState('');
+  const [codeforces, setCodeforces] = useState('');
   const [resumeFile, setResumeFile] = useState<File | null>(null);
 
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 8 }, (_, i) => currentYear - 2 + i);
 
   useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    if (searchParams.get('edit') === 'true' && userEmail) {
-      const usersData = JSON.parse(localStorage.getItem('mock_users_data') || '{}');
-      if (usersData[userEmail]) {
-        const data = usersData[userEmail];
-        setFullName(data.fullName || '');
-        setGender(data.gender || '');
-        setCollege(data.college || '');
-        setBranch(data.branch || '');
-        setSkills(data.skills || '');
-        setGraduationYear(data.graduationYear || '');
-        setBackupEmail(data.backupEmail || '');
-      }
+    if (user) {
+      setFullName(user.name || '');
+      // @ts-ignore
+      setLeetcode(user.leetcode || '');
+      // @ts-ignore
+      setCodeforces(user.codeforces || '');
     }
-  }, [userEmail]);
+  }, [user]);
 
   const MOCK_COLLEGES = [
     "Not Applicable (Normal User)",
@@ -57,36 +52,20 @@ export const DeveloperOnboarding: React.FC = () => {
     e.preventDefault();
     setLoading(true);
 
-      setTimeout(async () => {
-        const email = user?.email || sessionStorage.getItem('mock_email');
-        if (email) {
-          const usersData = JSON.parse(localStorage.getItem('mock_users_data') || '{}');
-          usersData[email] = {
-            ...usersData[email],
-            fullName,
-            gender,
-            college,
-            branch,
-            skills,
-            graduationYear,
-            backupEmail,
-            onboarded: true
-          };
-          localStorage.setItem('mock_users_data', JSON.stringify(usersData));
-        }
-
-        if (user?._id && !user._id.startsWith('mock_')) {
+         if (user?._id) {
           await supabaseDB.upsertUser({
              _id: user._id,
              email: user.email,
              name: fullName || user.name,
+             leetcode: leetcode,
+             codeforces: codeforces,
              onboarding_completed: true
           });
+          // Update local state by forcing a reload or relying on AuthContext
+          window.location.href = '/dashboard';
+        } else {
+          setLoading(false);
         }
-
-        setLoading(false);
-        navigate('/dashboard');
-    }, 1500);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -251,6 +230,41 @@ export const DeveloperOnboarding: React.FC = () => {
                 </div>
               )}
             </div>
+
+          {/* Coding Platforms Row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-1.5">
+              <label className="text-sm font-bold text-slate-700">LeetCode Username <span className="text-slate-400 font-normal ml-1">(Optional)</span></label>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-primary">
+                  💻
+                </div>
+                <input 
+                  type="text" 
+                  placeholder="e.g. johndoe"
+                  value={leetcode}
+                  onChange={(e) => setLeetcode(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-all text-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-sm font-bold text-slate-700">Codeforces Handle <span className="text-slate-400 font-normal ml-1">(Optional)</span></label>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-brand-primary">
+                  📊
+                </div>
+                <input 
+                  type="text" 
+                  placeholder="e.g. tourist"
+                  value={codeforces}
+                  onChange={(e) => setCodeforces(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 transition-all text-slate-900"
+                />
+              </div>
+            </div>
+          </div>
 
           {/* Resume Upload */}
           <div className="space-y-1.5">

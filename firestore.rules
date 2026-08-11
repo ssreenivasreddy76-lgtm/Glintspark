@@ -1,8 +1,53 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Users can only read and write their own document
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Interview sessions: Users can only read and write their own sessions
+    match /interview_sessions/{sessionId} {
+      allow read, write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      // Also allow read if the existing document's userId matches auth.uid
+      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Solved challenges: Same as interviews, locked to user
+    match /solved_challenges/{docId} {
+      allow read, write: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Public content (Curriculum, Challenges, Contests, Practice Tracks, Interview Questions)
+    // Anyone can read, but only admins can write.
+    // For now, if we don't have a secure backend role claim, we'll allow anyone to read.
+    // To restrict writes strictly to admins, we'd check the user role or custom claims.
+    match /curriculum/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.role == 'admin';
+    }
+    match /challenges/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.role == 'admin';
+    }
+    match /contests/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.role == 'admin';
+    }
+    match /practice_tracks/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.role == 'admin';
+    }
+    match /interview_questions/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.role == 'admin';
+    }
+
+    // Fallback: block everything else
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

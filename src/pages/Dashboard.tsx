@@ -5,7 +5,7 @@ import {
   Database, DatabaseZap, Cpu, Lock,
   Braces, Binary, Calculator, Flame,
   Zap, Trophy, ArrowRight, Play, Star,
-  TrendingUp, CheckCircle2, Loader2
+  TrendingUp, CheckCircle2, Loader2, XCircle
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,28 +15,19 @@ import { useChallenges } from '../contexts/ChallengesContext';
 
 // ─── Skill grid data ──────────────────────────────────────────────
 const skills = [
-  { name: "Javascript",  icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/javascript/javascript-original.svg" alt="JS"  className="w-5 h-5" /> },
-  { name: "Python",      icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg"               alt="Py"  className="w-5 h-5" /> },
-  { name: "Java",        icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/java/java-original.svg"                    alt="Java"className="w-5 h-5" /> },
-  { name: "C++",         icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/cplusplus/cplusplus-original.svg"           alt="C++" className="w-5 h-5" /> },
   { name: "C",           icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/c/c-original.svg"                          alt="C"   className="w-5 h-5" /> },
-  { name: "C#",          icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/csharp/csharp-original.svg"                alt="C#"  className="w-5 h-5" /> },
+  { name: "Python",      icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg"               alt="Py"  className="w-5 h-5" /> },
+  { name: "Javascript",  icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/javascript/javascript-original.svg" alt="JS"  className="w-5 h-5" /> },
   { name: "SQL",         icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/mysql/mysql-original.svg"                 alt="SQL" className="w-5 h-5" /> },
+  { name: "Java",        icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/java/java-original.svg"                    alt="Java"className="w-5 h-5" /> },
+  { name: "C#",          icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/csharp/csharp-original.svg"                alt="C#"  className="w-5 h-5" /> },
   { name: "PostgreSQL",  icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/postgresql/postgresql-original.svg"        alt="Postgres" className="w-5 h-5" /> },
+  { name: "C++",         icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/cplusplus/cplusplus-original.svg"           alt="C++" className="w-5 h-5" /> },
   { name: "Data Structures", icon: <img src="https://img.icons8.com/color/96/data-configuration.png" alt="DS" className="w-6 h-6" /> },
   { name: "Algorithms",      icon: <img src="https://img.icons8.com/color/96/flow-chart.png" alt="Algo" className="w-6 h-6" /> },
 ];
 
-const mockInterviews = [
-  { title: "Frontend Architecture", desc: "Deep dive into React internals, state management, rendering optimization, and modern web vitals.", time: "45 mins", tags: ["React", "UI/UX", "Performance"], lock: false },
-  { title: "Backend & APIs",        desc: "Design robust REST/GraphQL APIs, handle database scaling, caching strategies, and security.",        time: "60 mins", tags: ["Node.js", "System Design", "Databases"], lock: false },
-  { title: "Data Structures",       desc: "Tackle classic FAANG-style algorithmic challenges. Focus on optimal time/space complexity.",               time: "60 mins", tags: ["Algorithms", "Problem Solving"], lock: false },
-  { title: "Leadership & Culture",  desc: "Master the STAR method. Answer behavioral questions focused on conflict resolution and leadership.",                time: "45 mins", tags: ["Behavioral", "Soft Skills"], lock: false },
-  { title: "Full-Stack Design",     desc: "Architect an end-to-end scalable application. Connect frontend systems to distributed backends.",   time: "90 mins", tags: ["System Design", "Architecture"], lock: false },
-  { title: "DevOps & Cloud",        desc: "Design cloud infrastructures, CI/CD pipelines, and manage container orchestration.", time: "60 mins", tags: ["AWS", "Docker", "Kubernetes"], lock: false },
-  { title: "Database Architecture", desc: "Optimize complex SQL queries, design schemas, and handle large-scale database migrations.", time: "45 mins", tags: ["SQL", "PostgreSQL", "NoSQL"], lock: false },
-  { title: "Security & Crypto",     desc: "Identify vulnerabilities, implement authentication, and secure systems against modern threats.", time: "60 mins", tags: ["Cybersecurity", "Pen-testing"], lock: false },
-];
+// Removed hardcoded mock interviews, these are now fetched from state
 
 // ─── Helper ───────────────────────────────────────────────────────
 function getInitials(name: string) {
@@ -51,15 +42,38 @@ function xpToStars(xp: number) {
 // ─── Component ────────────────────────────────────────────────────
 // ─── Practice track mapping helper ───
 function getPracticeTrackId(name: string) {
+  if (!name) return 'javascript';
   const norm = name.toLowerCase();
   if (norm.includes('javascript') || norm.includes('js')) return 'javascript';
   if (norm.includes('python')) return 'python';
   if (norm.includes('java') && !norm.includes('javascript')) return 'java';
-  if (norm.includes('c++') || norm.includes('c#') || norm === 'c') return 'c';
+  if (norm.includes('c++')) return 'c++';
+  if (norm.includes('c#') || norm.includes('c sharp')) return 'c#';
+  if (norm === 'c' || norm.startsWith('c ') || norm.includes(' c ')) return 'c';
   if (norm.includes('sql') || norm.includes('postgres')) return 'sql';
   if (norm.includes('structure') || norm.includes('algorithm') || norm.includes('ds')) return 'data-structures';
   return 'javascript';
 }
+
+const DEFAULT_TEMPLATES = [
+  { id: 'dt-1', title: 'C Programming', role: 'Software Engineer', difficulty: 'Medium', techStack: 'C, Pointers, Memory Management' },
+  { id: 'dt-2', title: 'Java Developer', role: 'Backend', difficulty: 'Medium', techStack: 'Java, OOP, Spring Boot' },
+  { id: 'dt-3', title: 'Python Engineer', role: 'Software Engineer', difficulty: 'Medium', techStack: 'Python, Django, Data Processing' },
+  { id: 'dt-4', title: 'C++ Developer', role: 'Systems Engineer', difficulty: 'Hard', techStack: 'C++, STL, Memory' },
+  { id: 'dt-5', title: 'Data Structures & Algorithms', role: 'General', difficulty: 'Hard', techStack: 'DSA, Problem Solving' },
+  { id: 'dt-6', title: 'Java Full Stack', role: 'Full Stack', difficulty: 'Hard', techStack: 'Java, React, Spring, SQL' },
+  { id: 'dt-7', title: 'Frontend (HTML/CSS/JS)', role: 'Frontend', difficulty: 'Medium', techStack: 'HTML, CSS, JavaScript, React' },
+  { id: 'dt-8', title: 'Database & SQL', role: 'Data', difficulty: 'Medium', techStack: 'SQL, PostgreSQL, Database Design' },
+  { id: 'dt-9', title: 'System Design Architect', role: 'Architect', difficulty: 'Hard', techStack: 'System Design, Microservices, Cloud' },
+];
+
+const INITIAL_MOCK_INTERVIEWS = DEFAULT_TEMPLATES.map((t: any) => ({
+  id: t.id,
+  title: t.title,
+  desc: `Practice your ${t.title || t.role} skills in an interactive AI coding interview environment.`,
+  time: "45 mins",
+  lock: false
+}));
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -69,6 +83,45 @@ export default function Dashboard() {
   const [solvedCountByLang, setSolvedCountByLang] = useState<Record<string, number>>({});
   const [loadingStats, setLoadingStats] = useState(true);
   const [showAllInterviews, setShowAllInterviews] = useState(false);
+  const [mockInterviews, setMockInterviews] = useState<any[]>(INITIAL_MOCK_INTERVIEWS);
+  const [showDevMessage, setShowDevMessage] = useState(false);
+
+  // Fetch mock interviews from Firebase + defaults
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      try {
+        const dbTemplates = await firebaseDB.getMockTemplates();
+        
+        // Merge DB templates with default templates to ensure Java, Python, C++, etc. always exist
+        const dbTitles = new Set(dbTemplates.map((t: any) => (t.title || '').toLowerCase().trim()));
+        const missingDefaults = DEFAULT_TEMPLATES.filter(dt => !dbTitles.has(dt.title.toLowerCase().trim()));
+        const allTemplates = [...dbTemplates, ...missingDefaults];
+
+        const mapped = allTemplates.map((t: any) => {
+          let cleanDesc = t.description;
+          if (!cleanDesc) {
+            if (t.role) {
+              cleanDesc = `Practice your ${t.title || t.role} skills in an interactive AI coding interview environment.`;
+            } else {
+              cleanDesc = `Interactive technical mock interview simulation with real-time AI feedback and scoring.`;
+            }
+          }
+          return {
+            id: t.id || Math.random().toString(),
+            title: t.title || 'Untitled',
+            desc: cleanDesc,
+            time: "45 mins",
+            lock: false
+          };
+        });
+        setMockInterviews(mapped);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    fetchTemplates();
+  }, []);
 
   // Fetch real stats from Firestore
   useEffect(() => {
@@ -108,6 +161,24 @@ export default function Dashboard() {
 
   return (
     <div className="bg-[#f8fafc] min-h-screen pb-24 relative overflow-hidden font-sans">
+      <AnimatePresence>
+        {showDevMessage && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-8 left-1/2 -translate-x-1/2 z-[100] bg-white border-2 border-red-500 rounded-lg shadow-2xl px-8 py-5 flex items-center justify-center gap-5 w-[95%] max-w-4xl"
+          >
+            <div className="w-9 h-9 rounded-full bg-red-500 flex items-center justify-center shrink-0 shadow-sm">
+              <span className="text-white text-[16px] font-black">X</span>
+            </div>
+            <p className="text-slate-800 text-xl font-bold tracking-tight">
+              Sorry, this feature is currently under development. Check back soon!
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ── Background Gradients ── */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
         <motion.div animate={{ x: [0, 50, -30, 0], y:[0, -50, 30, 0] }} transition={{ duration: 25, repeat: Infinity, ease: 'easeInOut' }}
@@ -119,66 +190,7 @@ export default function Dashboard() {
 
       <div className="max-w-7xl mx-auto px-4 md:px-8 py-12 space-y-16 relative z-10">
 
-        {/* ── 1. STATS ROW ── */}
-        <motion.div 
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="grid grid-cols-2 md:grid-cols-4 gap-6"
-        >
-          {/* Global Rank */}
-          <div className="relative group p-[1px] rounded-[28px] bg-gradient-to-br from-slate-200 to-slate-100 hover:from-amber-400 hover:to-orange-400 transition-all duration-500 shadow-sm hover:shadow-2xl hover:shadow-amber-500/20">
-            <div className="h-full bg-white/80 backdrop-blur-xl p-6 rounded-[27px] transition-all group-hover:bg-white/95">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest group-hover:text-amber-600 transition-colors">Global Rank</span>
-                <div className="w-10 h-10 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500 group-hover:bg-amber-100 group-hover:scale-110 transition-all duration-300 shadow-sm">
-                  <Trophy size={20} />
-                </div>
-              </div>
-              <div className="text-3xl font-black text-slate-900 tracking-tight">#629,826</div>
-            </div>
-          </div>
 
-          {/* Streak */}
-          <div className="relative group p-[1px] rounded-[28px] bg-gradient-to-br from-slate-200 to-slate-100 hover:from-orange-400 hover:to-red-400 transition-all duration-500 shadow-sm hover:shadow-2xl hover:shadow-orange-500/20">
-            <div className="h-full bg-white/80 backdrop-blur-xl p-6 rounded-[27px] transition-all group-hover:bg-white/95">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest group-hover:text-orange-600 transition-colors">Day Streak</span>
-                <div className="w-10 h-10 rounded-2xl bg-orange-50 flex items-center justify-center text-orange-500 group-hover:bg-orange-100 group-hover:scale-110 transition-all duration-300 shadow-sm">
-                  <Flame size={20} className="fill-orange-500" />
-                </div>
-              </div>
-              <div className="text-3xl font-black text-slate-900 tracking-tight">{streak} <span className="text-xl text-slate-400">days</span></div>
-            </div>
-          </div>
-
-          {/* Points / XP */}
-          <div className="relative group p-[1px] rounded-[28px] bg-gradient-to-br from-slate-200 to-slate-100 hover:from-indigo-400 hover:to-purple-400 transition-all duration-500 shadow-sm hover:shadow-2xl hover:shadow-indigo-500/20">
-            <div className="h-full bg-white/80 backdrop-blur-xl p-6 rounded-[27px] transition-all group-hover:bg-white/95">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest group-hover:text-indigo-600 transition-colors">Points (XP)</span>
-                <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-500 group-hover:bg-indigo-100 group-hover:scale-110 transition-all duration-300 shadow-sm">
-                  <Zap size={20} className="fill-indigo-500" />
-                </div>
-              </div>
-              <div className="text-3xl font-black text-slate-900 tracking-tight">{xp}</div>
-            </div>
-          </div>
-
-          {/* Solved */}
-          <div className="relative group p-[1px] rounded-[28px] bg-gradient-to-br from-slate-200 to-slate-100 hover:from-emerald-400 hover:to-teal-400 transition-all duration-500 shadow-sm hover:shadow-2xl hover:shadow-emerald-500/20">
-            <div className="h-full bg-white/80 backdrop-blur-xl p-6 rounded-[27px] transition-all group-hover:bg-white/95">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest group-hover:text-emerald-600 transition-colors">Challenges</span>
-                <div className="w-10 h-10 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-500 group-hover:bg-emerald-100 group-hover:scale-110 transition-all duration-300 shadow-sm">
-                  <CheckCircle2 size={20} />
-                </div>
-              </div>
-              <div className="text-3xl font-black text-slate-900 tracking-tight">
-                {loadingStats ? <Loader2 size={24} className="animate-spin text-slate-200" /> : totalSolved}
-              </div>
-            </div>
-          </div>
-        </motion.div>
 
         {/* OLD CONTINUE WHERE YOU LEFT OFF SECTION REMOVED */}
 
@@ -201,36 +213,31 @@ export default function Dashboard() {
             <AnimatePresence>
               {(showAllInterviews ? mockInterviews : mockInterviews.slice(0, 3)).map((item, i) => (
                 <motion.div
-                  key={item.title}
+                  key={item.id}
                   initial={{ opacity:0, y:20 }} 
                   animate={{ opacity:1, y:0 }} 
                   exit={{ opacity:0, y:-20 }}
                   transition={{ delay: i * 0.05, duration: 0.4 }}
                   className="relative p-[1px] rounded-[32px] bg-gradient-to-b from-slate-200 to-slate-100 hover:from-blue-400 hover:to-cyan-400 transition-all duration-500 shadow-sm hover:shadow-2xl hover:shadow-blue-500/20 group"
                 >
-                  <div className="h-full bg-white/90 backdrop-blur-xl p-8 rounded-[31px] flex flex-col items-start transition-all group-hover:bg-white/95 relative overflow-hidden">
+                  <div className="h-full bg-white backdrop-blur-xl p-8 rounded-[31px] flex flex-col items-start transition-all group-hover:bg-white relative overflow-hidden">
                     <div className="absolute -top-20 -right-20 w-48 h-48 bg-gradient-to-br from-blue-400/10 to-cyan-400/10 blur-3xl rounded-full group-hover:from-blue-400/20 group-hover:to-cyan-400/20 transition-all duration-500"></div>
                     
                     <div className="w-12 h-12 bg-slate-100 text-slate-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-gradient-to-br group-hover:from-blue-600 group-hover:to-cyan-600 group-hover:text-white transition-all duration-500 shadow-sm group-hover:shadow-blue-500/30">
-                      {i % 3 === 0 ? <Layout size={24} /> : i % 3 === 1 ? <DatabaseZap size={24} /> : <BrainCircuit size={24} />}
+                      {(() => {
+                        const trackId = getPracticeTrackId(item.title);
+                        const skill = skills.find(s => getPracticeTrackId(s.name) === trackId);
+                        if (skill) return <div className="group-hover:brightness-0 group-hover:invert transition-all">{skill.icon}</div>;
+                        return i % 3 === 0 ? <Layout size={24} /> : i % 3 === 1 ? <DatabaseZap size={24} /> : <BrainCircuit size={24} />;
+                      })()}
                     </div>
 
                     <h3 className="text-2xl font-black text-slate-900 tracking-tight mb-3 relative z-10 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-blue-600 group-hover:to-cyan-600 transition-all">{item.title}</h3>
                     <p className="text-slate-500 text-sm leading-relaxed font-medium mb-6 flex-grow relative z-10">{item.desc}</p>
 
-                    <div className="flex items-center gap-2 text-slate-400 font-bold text-xs mb-6 relative z-10">
+                    <div className="flex items-center gap-2 text-slate-400 font-bold text-xs mb-8 relative z-10">
                       <Clock size={16} className="text-slate-400 group-hover:text-blue-500 transition-colors" /> {item.time}
                     </div>
-
-                    {item.tags && (
-                      <div className="flex flex-wrap gap-2 mb-8 relative z-10">
-                        {item.tags.map(tag => (
-                          <span key={tag} className="text-[10px] font-black bg-slate-100 text-slate-500 px-3 py-1.5 rounded-lg uppercase tracking-widest group-hover:bg-blue-50 group-hover:text-blue-700 transition-colors">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
 
                     <div className="relative z-10 w-full mt-auto">
                       {item.lock ? (
@@ -238,12 +245,15 @@ export default function Dashboard() {
                           <Lock size={20} />
                         </div>
                       ) : (
-                        <Link
-                          to={`/mock-interview/${item.title.toLowerCase().replace(/\s+/g, '-')}`}
+                        <button
+                          onClick={() => {
+                            setShowDevMessage(true);
+                            setTimeout(() => setShowDevMessage(false), 4000);
+                          }}
                           className="w-full flex px-6 py-4 bg-slate-900 hover:bg-gradient-to-r hover:from-blue-600 hover:to-cyan-600 text-white rounded-xl text-sm font-black uppercase tracking-widest transition-all duration-300 shadow-md hover:shadow-xl hover:shadow-blue-500/25 justify-center items-center gap-2 group/btn"
                         >
                           Start Interview <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
-                        </Link>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -259,8 +269,8 @@ export default function Dashboard() {
           {!loadingStats && lastSolved && (
             <motion.div initial={{ opacity:0, y:8 }} animate={{ opacity:1, y:0 }}
               className="relative p-[1px] rounded-[32px] bg-gradient-to-r from-blue-500/30 via-cyan-500/30 to-blue-500/30 hover:from-blue-500 hover:via-cyan-500 hover:to-blue-500 transition-all duration-500 overflow-hidden shadow-sm hover:shadow-xl hover:shadow-blue-500/15 group mb-10">
-              <div className="absolute top-0 right-0 p-12 bg-white/5 rounded-full blur-3xl -z-10 group-hover:bg-white/10 transition-all"></div>
-              <div className="bg-white/95 backdrop-blur-2xl rounded-[31px] p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 transition-all">
+              <div className="absolute top-0 right-0 p-12 bg-white rounded-full blur-3xl -z-10 group-hover:bg-white transition-all"></div>
+              <div className="bg-white backdrop-blur-2xl rounded-[31px] p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 transition-all">
                 <div className="flex items-center gap-6 w-full sm:w-auto flex-1">
                   <div className="w-16 h-16 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl flex items-center justify-center shrink-0 shadow-inner border border-blue-100/50">
                     {skills.find(s => getPracticeTrackId(s.name) === lastSolved.language)?.icon || <Code2 size={28} className="text-blue-600" />}
@@ -314,7 +324,7 @@ export default function Dashboard() {
                   className="relative p-[1px] rounded-2xl bg-gradient-to-b from-slate-200 to-slate-100 hover:from-blue-400 hover:to-cyan-400 transition-all duration-500 shadow-sm hover:shadow-xl hover:shadow-blue-500/15 group overflow-hidden hover:-translate-y-1"
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-0"></div>
-                  <div className="h-full bg-white/95 backdrop-blur-xl rounded-[15px] p-4 flex items-center gap-4 transition-all relative z-10 group-hover:bg-white/90">
+                  <div className="h-full bg-white backdrop-blur-xl rounded-[15px] p-4 flex items-center gap-4 transition-all relative z-10 group-hover:bg-white">
                     <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100 group-hover:bg-white group-hover:shadow-sm transition-all shrink-0">
                       <div className="group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300">{skill.icon}</div>
                     </div>

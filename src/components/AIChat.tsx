@@ -33,7 +33,8 @@ export function AIChat() {
       // Use local storage token for auth if available, else a dummy token for local dev bypass
       const mockToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwiZW1haWwiOiJ0ZXN0QHRlc3QuY29tIn0.mock";
       
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8080';
+      const defaultApiUrl = import.meta.env.DEV ? 'http://127.0.0.1:8080' : 'https://api.glintspark.in';
+      const apiUrl = import.meta.env.VITE_API_URL || defaultApiUrl;
       const response = await fetch(`${apiUrl}/api/ai/chat`, {
         method: 'POST',
         headers: {
@@ -82,7 +83,7 @@ export function AIChat() {
       >
         <div className="relative flex items-center justify-center">
            <Sparkles size={20} className="group-hover:animate-pulse" />
-           <div className="absolute inset-0 bg-white/20 rounded-full blur-md animate-ping opacity-75"></div>
+           <div className="absolute inset-0 bg-white rounded-full blur-md animate-ping opacity-75"></div>
         </div>
         <span className="font-bold text-[15px] tracking-wide pr-1">Ask Glintspark AI</span>
       </motion.button>

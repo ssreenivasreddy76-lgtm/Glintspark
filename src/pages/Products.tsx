@@ -76,7 +76,7 @@ export default function Products() {
       {/* Removed Hero Section as requested */}
 
       {/* Product Grid */}
-      <section className="py-24 bg-slate-50/60 relative z-10 border-t border-slate-200/60">
+      <section className="py-24 bg-slate-50/60 relative z-10 border-t border-slate-200">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Explore Our Features</h2>

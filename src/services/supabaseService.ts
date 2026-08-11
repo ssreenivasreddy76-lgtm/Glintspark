@@ -13,7 +13,8 @@ class SupabaseService {
     const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
     const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
     this.supabaseUrl = envUrl;
-    this.apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+    const defaultApiUrl = import.meta.env.DEV ? 'http://localhost:8080' : 'https://api.glintspark.in';
+    this.apiUrl = import.meta.env.VITE_API_URL || defaultApiUrl;
 
     if (!envUrl || !envKey) {
       console.warn("❌ Supabase Configuration Missing.");
@@ -43,6 +44,24 @@ class SupabaseService {
       lastActiveAt: profile.last_active_at as string,
       activity_log: (profile.activity_log as string[]) || [],
       activity_history: (profile.activity_history as any[]) || [],
+      college: profile.college as string,
+      branch: profile.branch as string,
+      batch: profile.batch as string,
+      graduationYear: profile.graduationYear as string,
+      phoneNumber: profile.phone_number as string,
+      backupEmail: profile.backup_email as string,
+      usn: profile.usn as string,
+      marks10thMax: profile.marks_10th_max as string,
+      marks10thObtained: profile.marks_10th_obtained as string,
+      marks12thMax: profile.marks_12th_max as string,
+      marks12thObtained: profile.marks_12th_obtained as string,
+      leetcode: profile.leetcode as string,
+      codeforces: profile.codeforces as string,
+      codechef: profile.codechef as string,
+      gfg: profile.gfg as string,
+      hackerrank: profile.hackerrank as string,
+      github: profile.github as string,
+      certifications: (profile.certifications as any[]) || [],
     };
   }
 
@@ -132,9 +151,30 @@ class SupabaseService {
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (updates.onboardingCompleted !== undefined) dbUpdates.onboarding_completed = updates.onboardingCompleted;
     if (updates.xp !== undefined) dbUpdates.xp = updates.xp;
+    if (updates.penalties !== undefined) dbUpdates.penalties = updates.penalties;
+    if (updates.proctorLockUntil !== undefined) dbUpdates.proctor_lock_until = updates.proctorLockUntil;
     if (updates.streak !== undefined) dbUpdates.streak = updates.streak;
     if (updates.activity_log !== undefined) dbUpdates.activity_log = updates.activity_log;
-    if (updates.activity_history !== undefined) dbUpdates.activity_history = updates.activity_history;
+    if (updates.completedLessonIds !== undefined) dbUpdates.completed_lesson_ids = updates.completedLessonIds;
+    if (updates.gfg !== undefined) dbUpdates.gfg = updates.gfg;
+    if (updates.hackerrank !== undefined) dbUpdates.hackerrank = updates.hackerrank;
+    if (updates.github !== undefined) dbUpdates.github = updates.github;
+    if (updates.avatar !== undefined) dbUpdates.avatar = updates.avatar;
+    if (updates.certifications !== undefined) dbUpdates.certifications = updates.certifications;
+    if (updates.college !== undefined) dbUpdates.college = updates.college;
+    if (updates.branch !== undefined) dbUpdates.branch = updates.branch;
+    if (updates.batch !== undefined) dbUpdates.batch = updates.batch;
+    if (updates.graduationYear !== undefined) dbUpdates.graduationYear = updates.graduationYear;
+    if (updates.phoneNumber !== undefined) dbUpdates.phone_number = updates.phoneNumber;
+    if (updates.backupEmail !== undefined) dbUpdates.backup_email = updates.backupEmail;
+    if (updates.usn !== undefined) dbUpdates.usn = updates.usn;
+    if (updates.marks10thMax !== undefined) dbUpdates.marks_10th_max = updates.marks10thMax;
+    if (updates.marks10thObtained !== undefined) dbUpdates.marks_10th_obtained = updates.marks10thObtained;
+    if (updates.marks12thMax !== undefined) dbUpdates.marks_12th_max = updates.marks12thMax;
+    if (updates.marks12thObtained !== undefined) dbUpdates.marks_12th_obtained = updates.marks12thObtained;
+    if (updates.leetcode !== undefined) dbUpdates.leetcode = updates.leetcode;
+    if (updates.codeforces !== undefined) dbUpdates.codeforces = updates.codeforces;
+    if (updates.codechef !== undefined) dbUpdates.codechef = updates.codechef;
 
     const { data, error } = await this.supabase.from('users').update(dbUpdates).eq('id', id).select().single();
     if (error) throw new Error(error.message || "Failed to update profile");
@@ -396,6 +436,31 @@ class SupabaseService {
     }
   }
 
+  async getAllSubmissions(): Promise<any[]> {
+    if (!this.isConfigured) return [];
+    try {
+      const { data, error } = await this.supabase
+        .from('solved_challenges')
+        .select('*');
+      
+      if (error) {
+        console.error("Supabase get all submissions error:", error);
+        return [];
+      }
+      return data.map((d: any) => ({
+        challengeId: d.challenge_id,
+        language: d.language,
+        status: d.status,
+        userId: d.user_id,
+        runtimeMs: d.runtimeMs,
+        memoryKb: d.memoryKb
+      }));
+    } catch (err) {
+      console.error("Error fetching all submissions:", err);
+      return [];
+    }
+  }
+
   async getGlobalChallengeStats(): Promise<Record<string, string>> {
     if (!this.isConfigured) return {};
     try {
@@ -558,6 +623,10 @@ class SupabaseService {
           input_data,
           output_data,
           explanation
+        ),
+        hidden_test_cases (
+          input_data,
+          expected_output
         )
       `);
       
@@ -597,6 +666,13 @@ class SupabaseService {
         sampleInput2: samples[1]?.input_data || '',
         sampleOutput2: samples[1]?.output_data || '',
         explanation2: samples[1]?.explanation || '',
+        
+        // Test Cases for Submission Evaluation
+        testCases: (p.hidden_test_cases || []).map((htc: any) => ({
+          input: htc.input_data,
+          expected: htc.expected_output,
+          isHidden: true
+        }))
       };
     });
   }

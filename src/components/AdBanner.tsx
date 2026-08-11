@@ -12,13 +12,24 @@ export const AdBanner: React.FC<AdBannerProps> = ({
   responsive = true 
 }) => {
   useEffect(() => {
-    try {
-      // @ts-ignore
-      (window.adsbygoogle = window.adsbygoogle || []).push({});
-    } catch (e) {
-      console.error("AdSense error", e);
+    // Only push to adsbygoogle if we're not in development mode to prevent infinite 400 loops
+    if (import.meta.env.MODE !== 'development') {
+      try {
+        // @ts-ignore
+        (window.adsbygoogle = window.adsbygoogle || []).push({});
+      } catch (e) {
+        // Silently ignore AdSense duplicate push errors
+      }
     }
   }, []);
+
+  if (import.meta.env.MODE === 'development') {
+    return (
+      <div className="w-full flex justify-center my-6 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 min-h-[100px] items-center text-slate-400 text-sm">
+        <span className="font-semibold text-slate-400/80">Advertisement Placeholder (Dev Mode)</span>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full flex justify-center my-6 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 min-h-[100px] items-center text-slate-400 text-sm">

@@ -15,23 +15,28 @@ export default function Challenges() {
   const [realRank, setRealRank] = useState<number | null>(null);
   const [challengeStats, setChallengeStats] = useState<Record<string, string>>({});
   const { user } = useAuth();
-  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem('glintspark_bookmarks');
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>([]);
   const { tracks: practiceTracks, challenges: allChallenges } = useChallenges();
 
-  const toggleBookmark = (id: string) => {
+  useEffect(() => {
+    if (user) {
+      firebaseDB.getUserProgress(user._id).then(progress => {
+        if (progress.bookmarks) setBookmarkedIds(progress.bookmarks);
+      });
+    }
+  }, [user]);
+
+  const toggleBookmark = async (id: string) => {
     setBookmarkedIds(prev => {
       const next = prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id];
-      localStorage.setItem('glintspark_bookmarks', JSON.stringify(next));
+      if (user) {
+        firebaseDB.updateUserProgress(user._id, { bookmarks: next });
+      }
       return next;
     });
   };
+
+  const [userProgress, setUserProgress] = useState<any>({});
 
   useEffect(() => {
     async function fetchSolved() {
@@ -50,6 +55,10 @@ export default function Challenges() {
           }
           const rank = await supabaseDB.getUserRank(user.xp || 0);
           setRealRank(rank);
+          
+          firebaseDB.getUserProgress(user._id).then(progress => {
+            if (progress) setUserProgress(progress);
+          });
         } catch (err) {
           console.error("Failed to load solved status from Supabase:", err);
         }
@@ -61,15 +70,27 @@ export default function Challenges() {
   // Find active track details
   const activeTrack = practiceTracks.find(t => t.id === topic);
 
-  // If topic is specified but not found, redirect to challenges catalog
+  // If track not found, redirect to catalog
+  useEffect(() => {
+    if (practiceTracks.length > 0 && !activeTrack) {
+      navigate('/practice', { replace: true });
+    }
+  }, [activeTrack, practiceTracks, navigate]);
   const challenges = activeTrack 
     ? allChallenges
-        .filter(c => c.isPractice !== false && (c.tracks ? c.tracks.includes(activeTrack.id) : c.track === activeTrack.id))
+        .filter(c => c.isPractice === false)
+        .filter(c => (
+          (c.allowedLanguages && Array.isArray(c.allowedLanguages) && c.allowedLanguages.includes(activeTrack.id)) ||
+          (!c.allowedLanguages && c.track === 'custom') ||
+          (c.tracks && Array.isArray(c.tracks) && c.tracks.includes(activeTrack.id)) || 
+          c.track === activeTrack.id
+        ))
         .map((c, idx) => ({ ...c, originalIndex: idx + 1, status: solvedSubmissions.some(s => s.challengeId === c.id && (!s.language || s.language.replace(/[^a-zA-Z+#]/g, '').toLowerCase() === activeTrack.name.replace(/[^a-zA-Z+#]/g, '').toLowerCase())) ? 'Solved' : 'Open' })) 
     : [];
 
   // STAR LOGIC CALCULATION for active topic
-  const totalPoints = challenges.filter(c => c.status === 'Solved').reduce((sum, c) => sum + c.points, 0);
+  const basePoints = challenges.filter(c => c.status === 'Solved').reduce((sum, c) => sum + c.points, 0);
+  const totalPoints = basePoints - (userProgress.penalties || 0);
 
   const getStarLevel = (points: number) => {
     if (points >= 2000) return { level: 6, next: null, current: points };
@@ -112,7 +133,22 @@ export default function Challenges() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
 
-  const filteredChallenges = challenges.filter(c => {
+  const mapCategory = (rawCat: string | undefined) => {
+    if (!rawCat) return '';
+    const cat = rawCat.toLowerCase();
+    if (cat.includes('condition') || cat.includes('loop')) return 'Conditionals and Loops';
+    if (cat.includes('array') || cat.includes('string')) return 'Arrays and Strings';
+    if (cat.includes('intro') || cat.includes('basic')) return 'Introduction';
+    if (cat.includes('function')) return 'Functions';
+    if (cat.includes('struct') || cat.includes('enum')) return 'Structs and Enums';
+    if (cat.includes('number')) return 'Number Logic';
+    return rawCat;
+  };
+
+  const mappedChallenges = challenges.map(c => ({ ...c, category: mapCategory(c.category) }));
+  const mappedAllChallenges = allChallenges.map(c => ({ ...c, category: mapCategory(c.category) }));
+
+  const filteredChallenges = mappedChallenges.filter(c => {
     if (selectedDifficulty.length > 0 && !selectedDifficulty.includes(c.difficulty)) return false;
     if (selectedStatus.length > 0 && !selectedStatus.includes(c.status)) return false;
     if (selectedCategories.length > 0 && !selectedCategories.includes(c.category)) return false;
@@ -120,190 +156,31 @@ export default function Challenges() {
     return true;
   });
 
-  const uniqueCategories = Array.from(new Set(challenges.map(c => c.category)));
-  const uniqueTopics = Array.from(new Set(challenges.flatMap(c => c.topics || []))).filter(Boolean);
-
-  // --- CATALOG: Flat list of ALL challenges across all tracks ---
-  const [catalogSearch, setCatalogSearch] = useState('');
-  const [catalogStatus, setCatalogStatus] = useState<string[]>([]);
-  const [catalogDifficulty, setCatalogDifficulty] = useState<string[]>([]);
-  const [catalogSkills, setCatalogSkills] = useState<string[]>([]);
-  const [catalogSubdomains, setCatalogSubdomains] = useState<string[]>([]);
-
-  // Flatten all challenges from all tracks with unique global originalIndex
-  const computedAllChallenges = allChallenges.map((c, idx) => {
-    const track = practiceTracks.find(t => t.id === c.track);
-    return { 
-      ...c, 
-      language: track?.name ?? c.track, 
-      languageId: c.track, 
-      languageIcon: track?.icon,
-      originalIndex: idx + 1 
-    };
-  });
-
-  const allSubdomains = Array.from(new Set(computedAllChallenges.map(c => c.category)));
-
-  const filteredAll = computedAllChallenges.filter(c => {
-    const isSolved = solvedSubmissions.some(s => s.challengeId === c.id);
-    const computedStatus = isSolved ? 'Solved' : 'Open';
-    if (catalogSearch.trim()) {
-      const query = catalogSearch.toLowerCase().trim();
-      const matchesTitle = c.title.toLowerCase().includes(query);
-      const matchesNumber = c.originalIndex.toString() === query || `${c.originalIndex}.`.includes(query);
-      if (!matchesTitle && !matchesNumber) return false;
-    }
-    if (catalogStatus.length > 0 && !catalogStatus.includes(computedStatus)) return false;
-    if (catalogDifficulty.length > 0 && !catalogDifficulty.includes(c.difficulty)) return false;
-    if (catalogSkills.length > 0 && !catalogSkills.includes(c.language)) return false;
-    if (catalogSubdomains.length > 0 && !catalogSubdomains.includes(c.category)) return false;
-    return true;
-  });
-
-  const toggleFilter = (arr: string[], setArr: React.Dispatch<React.SetStateAction<string[]>>, val: string) => {
-    setArr(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val]);
+  const ORDER_PREF = [
+    'introduction', 
+    'conditionals and loops', 
+    'number logic',
+    'arrays and strings', 
+    'functions', 
+    'structs and enums'
+  ];
+  
+  const sortSubdomains = (a: string, b: string) => {
+    const aLower = a.toLowerCase();
+    const bLower = b.toLowerCase();
+    let indexA = ORDER_PREF.findIndex(p => aLower.includes(p));
+    let indexB = ORDER_PREF.findIndex(p => bLower.includes(p));
+    if (indexA === -1) indexA = 999;
+    if (indexB === -1) indexB = 999;
+    if (indexA !== indexB) return indexA - indexB;
+    return a.localeCompare(b);
   };
 
-  // --- 1. RENDER HACKERRANK-STYLE CHALLENGES LIST ---
-  if (!activeTrack) {
-    return (
-      <div className="bg-[#f3f7f7] min-h-screen">
+  const uniqueCategories = Array.from(new Set(mappedChallenges.map(c => c.category))).filter(Boolean).sort(sortSubdomains);
+  const uniqueTopics = Array.from(new Set(mappedChallenges.flatMap(c => c.topics || []))).filter(Boolean);
 
-        {/* Page Header */}
-        <div className="bg-white border-b border-slate-200 shadow-sm py-7">
-          <div className="max-w-7xl mx-auto px-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-[#0e141e]">Practice Challenges</h1>
-              <p className="text-sm text-[#738f93] mt-1">Solve coding problems across languages and difficulty levels.</p>
-            </div>
-            {/* Search */}
-            <div className="relative group w-full md:w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-              <input 
-                type="text" 
-                value={catalogSearch}
-                onChange={e => setCatalogSearch(e.target.value)}
-                placeholder="Search practice..." 
-                className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-md text-[13px] focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary transition-all placeholder:text-slate-400 font-medium"
-              />
-            </div>
-          </div>
-        </div>
 
-        <div className="max-w-7xl mx-auto px-8 py-8 flex flex-col lg:flex-row gap-8">
-
-          {/* LEFT SIDEBAR */}
-          <aside className="w-full lg:w-56 shrink-0 space-y-8">
-
-            {/* Status */}
-            <div className="space-y-3">
-              <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Status</h4>
-              {['Solved', 'Open'].map(s => (
-                <label key={s} className="flex items-center gap-3 cursor-pointer">
-                  <input type="checkbox" checked={catalogStatus.includes(s)} onChange={() => toggleFilter(catalogStatus, setCatalogStatus, s)}
-                    className="w-4 h-4 border-2 border-slate-300 rounded text-brand-primary focus:ring-0" />
-                  <span className="text-[13px] font-semibold text-slate-700">{s === 'Open' ? 'Unsolved' : 'Solved'}</span>
-                </label>
-              ))}
-            </div>
-
-            {/* Difficulty */}
-            <div className="space-y-3">
-              <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Difficulty</h4>
-              {['Easy', 'Medium', 'Hard'].map(d => (
-                <label key={d} className="flex items-center gap-3 cursor-pointer">
-                  <input type="checkbox" checked={catalogDifficulty.includes(d)} onChange={() => toggleFilter(catalogDifficulty, setCatalogDifficulty, d)}
-                    className="w-4 h-4 border-2 border-slate-300 rounded text-brand-primary focus:ring-0" />
-                  <span className="text-[13px] font-semibold text-slate-700">{d}</span>
-                </label>
-              ))}
-            </div>
-
-            {/* Subdomains */}
-            <div className="space-y-3">
-              <h4 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Subdomains</h4>
-              {allSubdomains.map(sub => (
-                <label key={sub} className="flex items-center gap-3 cursor-pointer">
-                  <input type="checkbox" checked={catalogSubdomains.includes(sub)} onChange={() => toggleFilter(catalogSubdomains, setCatalogSubdomains, sub)}
-                    className="w-4 h-4 border-2 border-slate-300 rounded text-brand-primary focus:ring-0" />
-                  <span className="text-[13px] font-semibold text-slate-700">{sub}</span>
-                </label>
-              ))}
-            </div>
-          </aside>
-
-          {/* MAIN LIST */}
-          <div className="flex-1">
-            {/* Result count */}
-            <div className="flex items-center justify-between mb-5">
-              <span className="text-[12px] font-bold text-slate-400 uppercase tracking-widest">{filteredAll.length} Results</span>
-            </div>
-
-            <div className="space-y-3">
-              {filteredAll.length > 0 ? filteredAll.map((prob, i) => {
-                const isSolved = solvedSubmissions.some(s => s.challengeId === prob.id);
-                return (
-                  <motion.div
-                    key={`${prob.languageId}-${prob.id}`}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                    className="bg-white border border-slate-300 rounded-[4px] hover:border-slate-800 transition-all group flex flex-col md:flex-row justify-between items-center gap-6 px-8 py-6 relative overflow-hidden"
-                  >
-                    <div className="flex-1 space-y-2 text-left">
-                      <h3
-                        onClick={() => navigate(`/challenges/${prob.id}`, { state: { isProctored: false } })}
-                        className="text-[20px] font-medium text-[#1e2330] cursor-pointer"
-                      >
-                        {prob.title}
-                      </h3>
-                      <div className="text-[14px] text-slate-500">
-                        <span className={prob.difficulty === 'Easy' ? 'text-[#1ba94c]' : prob.difficulty === 'Medium' ? 'text-amber-500' : 'text-rose-600'}>
-                          {prob.difficulty}
-                        </span>
-                        , {prob.category}, Max Score: {prob.points}, Success Rate: {challengeStats[prob.id] || '0%'}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-5 shrink-0">
-                      <Star 
-                        size={18} 
-                        onClick={(e) => { e.stopPropagation(); toggleBookmark(prob.id); }}
-                        className={`cursor-pointer transition ${bookmarkedIds.includes(prob.id) ? 'text-amber-400 fill-amber-400' : 'text-slate-300 hover:text-amber-400'}`} 
-                      />
-                      {isSolved ? (
-                        <button
-                          onClick={() => navigate(`/challenges/${prob.id}`, { state: { isProctored: false } })}
-                          className="flex items-center gap-2 bg-[#0e141e] hover:bg-[#1e2736] text-white font-black text-[11px] uppercase tracking-widest min-w-[160px] justify-center rounded-[4px] px-7 py-2.5 transition active:scale-95 cursor-pointer"
-                        >
-                          <CheckCircle2 size={15} className="text-white" /> Solved
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => navigate(`/challenges/${prob.id}`, { state: { isProctored: false } })}
-                          className="px-7 py-2.5 bg-brand-primary text-white rounded-[4px] text-[11px] font-black uppercase tracking-widest hover:bg-brand-dark transition active:scale-95 min-w-[160px] text-center"
-                        >
-                          Solve Problem
-                        </button>
-                      )}
-                    </div>
-                  </motion.div>
-                );
-              }) : (
-                <div className="bg-white border border-slate-200 rounded-xl p-16 text-center text-slate-500">
-                  <AlertCircle size={36} className="text-slate-300 mx-auto mb-3" />
-                  <p className="text-lg font-bold">No challenges match your filters.</p>
-                  <p className="text-sm mt-1">Try clearing some filters or search again.</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // --- 2. RENDER TOPIC PRACTICE PAGE WITH SPECIFIC QUESTIONS & BADGE TRACKER ---
+  if (!activeTrack) return null;
   return (
     <div className="bg-[#f3f7f7] min-h-screen">
       
@@ -322,17 +199,14 @@ export default function Challenges() {
  
              <div className="flex flex-col md:flex-row items-end justify-between pb-4">
                 
-                {/* Left Layer: Title */}
                 <div className="flex flex-col items-start gap-2">
                    <h1 className="text-[32px] font-bold text-[#1e2330] tracking-tight leading-none capitalize">
                       {activeTrack.name} Challenges
                    </h1>
                 </div>
- 
-                {/* Right Layer: Gamification System */}
+
+                {/* Right Layer: Gamification System (Without Rank) */}
                 <div className="flex items-center gap-8 text-left">
-                   
-                   {/* Text & Progress Column */}
                    <div className="flex flex-col w-[340px]">
                       <div className="text-[18px] text-[#39424e] mb-2.5 font-medium tracking-tight text-left">
                          {starData.level === 6 ? (
@@ -354,13 +228,12 @@ export default function Challenges() {
  
                       <div className="flex items-center justify-between text-[15px] text-[#5c6e7a]">
                          <div>
-                            Rank: <span className="font-bold text-[#39424e]">{realRank === null ? "..." : realRank.toLocaleString()}</span> <span className="text-[#c2c7d0] mx-1.5">|</span> Points: <span className="font-bold text-[#39424e]">{starData.current}/{starData.next || 'MAX'}</span>
+                            Points: <span className="font-bold text-[#39424e]">{starData.current}/{starData.next || 'MAX'}</span>
                          </div>
                          <AlertCircle onClick={() => navigate('/scoring-rules')} size={20} className="text-[#738f93] fill-[#738f93]/20 hover:text-[#5c6e7a] cursor-pointer transition-colors" />
                       </div>
                    </div>
  
-                   {/* Hexagon Badge */}
                    <div className="relative flex items-center justify-center shrink-0 drop-shadow-sm transition-colors duration-500">
                       <Hexagon 
                          size={90} 
@@ -369,41 +242,29 @@ export default function Challenges() {
                          style={{ transform: 'rotate(90deg)' }}
                       />
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
-                         
-                         {/* Topic Logo */}
                          <div className="w-7 h-7 mb-1 mt-0.5 flex items-center justify-center">
                             <img src={activeTrack.icon} alt={activeTrack.name} className="w-full h-full object-contain" />
                          </div>
-                         
-                         {/* Topic Name */}
                          <span className="text-[9px] font-bold text-[#39424e] capitalize tracking-wide max-w-[60px] text-center leading-tight mb-0.5">
                             {activeTrack.initials}
                          </span>
- 
-                         {/* Earned Stars Row */}
                          <div className="flex items-center justify-center gap-[0.5px]">
                             {Array.from({ length: starData.level }).map((_, i) => (
-                               <Star 
-                                  key={i}
-                                  size={6} 
-                                  className={`${badgeStyles.starColor} transition-colors duration-500 drop-shadow-sm`} 
-                               />
+                               <Star key={i} size={6} className={`${badgeStyles.starColor} transition-colors duration-500 drop-shadow-sm`} />
                             ))}
                          </div>
- 
                       </div>
                    </div>
                 </div>
  
              </div>
- 
          </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-8 py-10 flex flex-col lg:flex-row gap-8">
         
         {/* --- LEFT SIDEBAR (FILTERS) --- */}
-        <aside className="w-full lg:w-64 space-y-10">
+        <aside className="w-full lg:w-64 space-y-10 lg:sticky lg:top-8 self-start overflow-y-auto max-h-[calc(100vh-4rem)] scrollbar-hide">
 
            {/* Status Filter */}
            <div className="space-y-4">
@@ -456,31 +317,29 @@ export default function Challenges() {
            </div>
 
            {/* Subdomains Filter */}
-           {uniqueCategories.length > 0 && (
-             <div className="space-y-4">
-                <h4 className="text-[13px] font-black uppercase tracking-[0.2em] text-slate-500">Subdomains</h4>
-                <div className="space-y-2">
-                   {uniqueCategories.map(cat => {
-                     const isChecked = selectedCategories.includes(cat);
-                     return (
-                       <label key={cat} className="flex items-center gap-3 cursor-pointer group">
-                          <input 
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => {
-                              setSelectedCategories(prev => 
-                                isChecked ? prev.filter(c => c !== cat) : [...prev, cat]
-                              );
-                            }}
-                            className="w-4 h-4 border-2 border-slate-300 rounded group-hover:border-brand-primary transition-colors text-brand-primary focus:ring-0" 
-                          />
-                          <span className="text-[15px] font-semibold text-slate-700">{cat}</span>
-                       </label>
-                     );
-                   })}
-                </div>
-             </div>
-           )}
+           <div className="space-y-4">
+              <h4 className="text-[13px] font-black uppercase tracking-[0.2em] text-slate-500">Subdomains</h4>
+              <div className="space-y-2">
+                 {uniqueCategories.map(cat => {
+                   const isChecked = selectedCategories.includes(cat);
+                   return (
+                     <label key={cat} className="flex items-center gap-3 cursor-pointer group">
+                        <input 
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            setSelectedCategories(prev => 
+                              isChecked ? prev.filter(c => c !== cat) : [...prev, cat]
+                            );
+                          }}
+                          className="w-4 h-4 border-2 border-slate-300 rounded group-hover:border-brand-primary transition-colors text-brand-primary focus:ring-0" 
+                        />
+                        <span className="text-[15px] font-semibold text-slate-700">{cat}</span>
+                     </label>
+                   );
+                 })}
+              </div>
+           </div>
 
            {/* Topics Filter */}
            {uniqueTopics.length > 0 && (
@@ -513,9 +372,26 @@ export default function Challenges() {
         {/* --- MAIN CHALLENGE AREA --- */}
         <div className="flex-1 space-y-8">
            
+           {/* Full Width Warning Banner or Lock Message */}
+           {userProgress.proctorLockUntil && Date.now() < userProgress.proctorLockUntil ? (
+              <div className="flex items-start md:items-center gap-2 px-4 py-3 bg-red-100 border border-red-300 rounded-lg w-full shadow-sm">
+                 <AlertCircle size={18} className="text-red-700 shrink-0 mt-0.5 md:mt-0" />
+                 <span className="text-[13px] font-bold text-red-900 leading-relaxed">
+                    ACCOUNT LOCKED: You have violated the proctoring rules multiple times. You are locked out of solving challenges until {new Date(userProgress.proctorLockUntil).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}.
+                 </span>
+              </div>
+           ) : (
+              <div className="flex items-start md:items-center gap-2 px-4 py-3 bg-rose-50 border border-rose-200 rounded-lg w-full shadow-sm">
+                 <AlertCircle size={18} className="text-rose-600 shrink-0 mt-0.5 md:mt-0" />
+                 <span className="text-[13px] font-bold text-rose-800 leading-relaxed">
+                    Important: Switching tabs or using a mobile device (camera detection) during a challenge will result in a 5-point deduction! After 2 violations, you will be locked out for 1 hour and unable to solve any challenges.
+                 </span>
+              </div>
+           )}
+
            {/* CHALLENGES HEADER */}
            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-              <h2 className="text-[22px] font-bold text-slate-800 tracking-tight">Practice Challenges</h2>
+              <h2 className="text-[22px] font-bold text-slate-800 tracking-tight">Challenges</h2>
               <span className="text-[12px] font-bold text-slate-400 uppercase tracking-widest">{filteredChallenges.length} Results</span>
             </div>
 

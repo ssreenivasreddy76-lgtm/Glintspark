@@ -28,6 +28,8 @@ export interface Challenge {
   constraints?: string;
   timeLimit?: number;
   memoryLimit?: number;
+  
+  // Sample Test Cases
   sampleInput1?: string;
   sampleOutput1?: string;
   explanation1?: string;
@@ -39,6 +41,8 @@ export interface Challenge {
   isPractice?: boolean;
   tracks?: string[];
   testCases?: TestCase[];
+  allowedLanguages?: string[];
+  companies?: string[];
 }
 
 export interface PracticeTrack {
@@ -123,11 +127,11 @@ export const ChallengesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   useEffect(() => {
     const fetchChallenges = async () => {
       try {
+        console.log("Fetching challenges from Supabase on mount...");
         const dbChallenges = await supabaseDB.getProblems();
-        if (dbChallenges && dbChallenges.length > 0) {
+        console.log(`Fetched ${dbChallenges?.length} problems. First problem hiddenTestCases:`, dbChallenges?.[0]?.hiddenTestCases?.substring(0, 50));
+        if (dbChallenges) {
           setChallenges(dbChallenges);
-        } else if (!stored?.challenges?.length) {
-          setChallenges(INITIAL_CHALLENGES); 
         }
       } catch (err) {
         console.error("Failed to load challenges from Supabase:", err);

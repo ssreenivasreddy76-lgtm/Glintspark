@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, useInView } from 'framer-motion';
 import { Terminal, BookOpen, Layers, ArrowRight } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 const baseTracks = [
   {
@@ -53,7 +53,7 @@ const baseTracks = [
     id: 'dsa',
     title: 'Data Structures & Algos',
     description: 'Design highly efficient queues, stacks, linked nodes.',
-    icon: <Terminal className="w-8 h-8 text-indigo-500" />,
+    icon: <img src="https://img.icons8.com/color/96/data-configuration.png" alt="DSA" className="w-8 h-8" />,
     difficulty: 'Advanced',
     difficultyColor: 'bg-rose-100 text-rose-700',
     group: 'advanced',
@@ -92,18 +92,32 @@ const cardVariants = {
   },
 };
 
+import { firebaseDB } from '../services/firebaseService';
+import { AnimatePresence } from 'framer-motion';
+
 export default function Curriculum() {
+  const navigate = useNavigate();
   const [lessonsMap, setLessonsMap] = useState<Record<string, any[]>>({});
+  const [showDevMessage, setShowDevMessage] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem('mock_curriculum_lessons');
-    if (saved) {
+    const fetchGlobalStats = async () => {
       try {
-        setLessonsMap(JSON.parse(saved));
-      } catch {
-        // ignore
+        const allData = await firebaseDB.getAllCurricula();
+        const globalLessonsMap: Record<string, any[]> = {};
+        
+        // Store the modules array directly so that .length gives the number of modules
+        Object.keys(allData).forEach(trackId => {
+          globalLessonsMap[trackId] = allData[trackId] || [];
+        });
+        
+        setLessonsMap(globalLessonsMap);
+      } catch (err) {
+        console.error("Failed to load global curriculum stats", err);
       }
-    }
+    };
+    
+    fetchGlobalStats();
   }, []);
 
   const tracks = baseTracks.map(track => ({
@@ -117,44 +131,35 @@ export default function Curriculum() {
   const advancedTracks = tracks.filter(t => t.group === 'advanced');
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans pb-24">
-      {/* Hero Section */}
-      <section className="relative pt-24 pb-16 overflow-hidden bg-slate-900 border-b border-white/10">
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-slate-900"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-brand-primary/10 blur-[120px] rounded-full pointer-events-none"></div>
-
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
+    <div className="min-h-screen bg-slate-50 font-sans pb-24 relative overflow-hidden">
+      <AnimatePresence>
+        {showDevMessage && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/10 text-white text-xs font-bold uppercase tracking-widest mb-6 backdrop-blur-md"
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-24 left-1/2 -translate-x-1/2 z-[100] bg-white border-2 border-red-500 rounded-lg shadow-2xl px-8 py-5 flex items-center justify-center gap-5 w-[95%] max-w-4xl"
           >
-            <BookOpen size={14} className="text-brand-primary" />
-            Curriculum
+            <div className="w-9 h-9 rounded-full bg-red-500 flex items-center justify-center shrink-0 shadow-sm">
+              <span className="text-white text-[16px] font-black">X</span>
+            </div>
+            <p className="text-slate-800 text-xl font-bold tracking-tight">
+              Sorry, this curriculum track is currently under development. Check back soon!
+            </p>
           </motion.div>
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-4xl md:text-5xl font-black text-white tracking-tight mb-4"
-          >
-            Master Technical Skills
-          </motion.h1>
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="text-lg text-slate-400 max-w-2xl mx-auto font-medium"
-          >
-            Structured learning paths designed to take you from beginner to industry-ready engineer.
-          </motion.p>
-        </div>
-      </section>
+        )}
+      </AnimatePresence>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-20 space-y-16">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 space-y-12">
         
+        {/* Top Header Bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-slate-200">
+          <div>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tight">Curriculum Tracks</h1>
+            <p className="text-slate-500 text-sm font-medium mt-1">Step-by-step master tracks designed from beginner to industry expert.</p>
+          </div>
+        </div>
         {/* Beginner Tracks */}
         <section>
           <div className="flex items-center justify-between mb-8">
@@ -163,7 +168,7 @@ export default function Curriculum() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {beginnerTracks.map(track => (
-              <TrackCard key={track.id} track={track} />
+              <TrackCard key={track.id} track={track} setShowDevMessage={setShowDevMessage} />
             ))}
           </div>
         </section>
@@ -176,7 +181,7 @@ export default function Curriculum() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {intermediateTracks.map(track => (
-              <TrackCard key={track.id} track={track} />
+              <TrackCard key={track.id} track={track} setShowDevMessage={setShowDevMessage} />
             ))}
           </div>
         </section>
@@ -189,7 +194,7 @@ export default function Curriculum() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {advancedTracks.map(track => (
-              <TrackCard key={track.id} track={track} />
+              <TrackCard key={track.id} track={track} setShowDevMessage={setShowDevMessage} />
             ))}
           </div>
         </section>
@@ -199,7 +204,12 @@ export default function Curriculum() {
   );
 }
 
-function TrackCard({ track }: { track: any }) {
+interface TrackCardProps {
+  track: any;
+  setShowDevMessage: (val: boolean) => void;
+}
+
+function TrackCard({ track, setShowDevMessage }: TrackCardProps) {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: '-50px' });
 
@@ -227,7 +237,7 @@ function TrackCard({ track }: { track: any }) {
         <div className="flex items-center gap-4 text-xs font-bold text-slate-500 mb-6 pb-6 border-b border-slate-100">
           <div className="flex items-center gap-1.5">
             <BookOpen size={16} className="text-slate-400" />
-            {track.lessons} Lessons
+            {track.lessons} Modules
           </div>
           <div className="flex items-center gap-1.5">
             <Layers size={16} className="text-slate-400" />
@@ -235,12 +245,33 @@ function TrackCard({ track }: { track: any }) {
           </div>
         </div>
 
+        {track.id.toLowerCase() === 'c' ? (
+          <Link
+            to={`/curriculum/${track.id}`}
+            className="w-full py-3.5 bg-slate-900 hover:bg-brand-primary text-white text-sm font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 group/btn shadow-md hover:shadow-brand-primary/25"
+          >
+            View Course <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
+          </Link>
+        ) : (
+          <button
+            onClick={() => {
+              setShowDevMessage(true);
+              setTimeout(() => setShowDevMessage(false), 4000);
+            }}
+            className="w-full py-3.5 bg-slate-900 hover:bg-brand-primary text-white text-sm font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 group/btn shadow-md hover:shadow-brand-primary/25"
+          >
+            View Course <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
+          </button>
+        )}
+
+        {/* LATER: Restore this Link for all tracks when development is complete
         <Link
           to={`/curriculum/${track.id}`}
           className="w-full py-3.5 bg-slate-900 hover:bg-brand-primary text-white text-sm font-black uppercase tracking-widest rounded-xl transition-all flex items-center justify-center gap-2 group/btn shadow-md hover:shadow-brand-primary/25"
         >
           View Course <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
         </Link>
+        */}
       </div>
     </motion.div>
   );

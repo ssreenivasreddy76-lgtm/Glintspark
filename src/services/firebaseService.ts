@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteDoc, query, where, writeBatch, limit, startAfter, orderBy } from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { FirebaseStorage } from 'firebase/storage';
@@ -26,7 +26,9 @@ let auth: Auth | null = null;
 if (isConfigured) {
   try {
     app = initializeApp(firebaseConfig);
-    db = getFirestore(app);
+    db = initializeFirestore(app, {
+      experimentalForceLongPolling: true
+    });
     storage = getStorage(app);
     auth = getAuth(app);
   } catch (err) {
@@ -155,6 +157,44 @@ export class FirebaseService {
     }
   }
 
+  // --- Fetch All Submissions (with Pagination) ---
+  async getAllSubmissions(limitNum: number = 50, startAfterDoc: any = null): Promise<{ submissions: Submission[], lastDoc: any }> {
+    if (!db) return { submissions: [], lastDoc: null };
+    try {
+      let q = query(collection(db, 'solved_challenges'), orderBy('createdAt', 'desc'), limit(limitNum));
+      if (startAfterDoc) {
+        q = query(collection(db, 'solved_challenges'), orderBy('createdAt', 'desc'), startAfter(startAfterDoc), limit(limitNum));
+      }
+      const querySnapshot = await getDocs(q);
+      const list: any[] = [];
+      let lastVisible = null;
+      querySnapshot.forEach((docSnap) => {
+        list.push(docSnap.data());
+        lastVisible = docSnap;
+      });
+      return { submissions: list, lastDoc: lastVisible };
+    } catch (err) {
+      console.error("Error fetching all submissions:", err);
+      return { submissions: [], lastDoc: null };
+    }
+  }
+
+  // --- Fetch Aggregated Dashboard Stats ---
+  async getGlobalStats(): Promise<any> {
+    if (!db) return null;
+    try {
+      const docRef = doc(db, 'global_stats', 'dashboard');
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return docSnap.data();
+      }
+      return null;
+    } catch (err) {
+      console.error("Error fetching global stats:", err);
+      return null;
+    }
+  }
+
   // --- Count All Submissions ---
   async getAllSubmissionsCount(): Promise<number> {
     if (!db) return 0;
@@ -216,6 +256,353 @@ export class FirebaseService {
     } catch (err) {
       console.error("Error fetching user interviews:", err);
       return [];
+    }
+  }
+  // --- Mock Interview Templates API ---
+  async getMockTemplates(): Promise<any[]> {
+    if (!db) return [];
+    try {
+      const q = collection(db, 'mock_templates');
+      const querySnapshot = await getDocs(q);
+      const list: any[] = [];
+      querySnapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      return list;
+    } catch (err) {
+      console.error("Error fetching mock templates from Firestore:", err);
+      return [];
+    }
+  }
+
+  async saveMockTemplate(template: any): Promise<void> {
+    if (!db) return;
+    try {
+      await setDoc(doc(db, 'mock_templates', template.id), template);
+    } catch (err) {
+      console.error("Error saving mock template in Firestore:", err);
+      throw err;
+    }
+  }
+
+  async deleteMockTemplate(id: string): Promise<void> {
+    if (!db) return;
+    try {
+      await deleteDoc(doc(db, 'mock_templates', id));
+    } catch (err) {
+      console.error("Error deleting mock template in Firestore:", err);
+      throw err;
+    }
+  }
+
+  // --- Firestore REST Converters ---
+  private _toFirestoreREST(obj: any): any {
+    if (obj === null || obj === undefined) return { nullValue: null };
+    if (typeof obj === 'boolean') return { booleanValue: obj };
+    if (typeof obj === 'number') return { doubleValue: obj };
+    if (typeof obj === 'string') return { stringValue: obj };
+    if (Array.isArray(obj)) return { arrayValue: { values: obj.map(v => this._toFirestoreREST(v)) } };
+    if (typeof obj === 'object') {
+      const fields: any = {};
+      for (const [k, v] of Object.entries(obj)) {
+        if (v !== undefined) fields[k] = this._toFirestoreREST(v);
+      }
+      return { mapValue: { fields } };
+    }
+    return { stringValue: String(obj) };
+  }
+
+  private _fromFirestoreREST(obj: any): any {
+    if (!obj) return null;
+    if ('nullValue' in obj) return null;
+    if ('booleanValue' in obj) return obj.booleanValue;
+    if ('integerValue' in obj) return Number(obj.integerValue);
+    if ('doubleValue' in obj) return Number(obj.doubleValue);
+    if ('stringValue' in obj) return obj.stringValue;
+    if ('arrayValue' in obj) return (obj.arrayValue.values || []).map((v: any) => this._fromFirestoreREST(v));
+    if ('mapValue' in obj) {
+      const result: any = {};
+      const fields = obj.mapValue.fields || {};
+      for (const [k, v] of Object.entries(fields)) {
+        result[k] = this._fromFirestoreREST(v);
+      }
+      return result;
+    }
+    return null;
+  }
+
+  // --- Curriculum API ---
+  async getCurriculum(trackId: string): Promise<any[]> {
+    try {
+      const projectId = firebaseConfig.projectId;
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/curriculum_tracks/${trackId}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        if (res.status === 404) return [];
+        throw new Error(`REST API error: ${res.status}`);
+      }
+      const data = await res.json();
+      const parsed = this._fromFirestoreREST({ mapValue: { fields: data.fields } });
+      return parsed.modules || [];
+    } catch (err) {
+      console.error("Error fetching curriculum via REST:", err);
+      return [];
+    }
+  }
+
+  async getAllCurricula(): Promise<Record<string, any[]>> {
+    try {
+      const projectId = firebaseConfig.projectId;
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/curriculum_tracks`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`REST API error: ${res.status}`);
+      const data = await res.json();
+      const curriculaMap: Record<string, any[]> = {};
+      
+      if (data.documents) {
+        data.documents.forEach((docSnap: any) => {
+          const parsed = this._fromFirestoreREST({ mapValue: { fields: docSnap.fields } });
+          const id = docSnap.name.split('/').pop();
+          if (id) curriculaMap[id] = parsed.modules || [];
+        });
+      }
+      return curriculaMap;
+    } catch (err) {
+      console.error("Error fetching all curricula via REST:", err);
+      return {};
+    }
+  }
+
+  async saveCurriculum(trackId: string, modules: any[]): Promise<void> {
+    try {
+      const projectId = firebaseConfig.projectId;
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/curriculum_tracks/${trackId}`;
+      
+      const payload = {
+        fields: {
+          modules: this._toFirestoreREST(modules),
+          updatedAt: this._toFirestoreREST(new Date().toISOString())
+        }
+      };
+
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      if (!res.ok) throw new Error(`REST API error: ${res.status}`);
+    } catch (err) {
+      console.error("Error saving curriculum via REST:", err);
+      throw err;
+    }
+  }
+
+  // --- Quizzes API ---
+  async getQuizzes(): Promise<any[]> {
+    if (!db) return [];
+    try {
+      const q = collection(db, 'quizzes');
+      const querySnapshot = await getDocs(q);
+      const quizzes: any[] = [];
+      querySnapshot.forEach((docSnap) => {
+        quizzes.push(docSnap.data());
+      });
+      return quizzes;
+    } catch (err) {
+      console.error("Error fetching quizzes:", err);
+      return [];
+    }
+  }
+
+  async saveQuizzes(quizzes: any[]): Promise<void> {
+    if (!db) return;
+    try {
+      const batch = writeBatch(db);
+      quizzes.forEach(quiz => {
+        const docRef = doc(db, 'quizzes', quiz.id);
+        batch.set(docRef, quiz);
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error("Error saving quizzes:", err);
+      throw err;
+    }
+  }
+
+  async getQuizQuestions(): Promise<Record<string, any[]>> {
+    if (!db) return {};
+    try {
+      const q = collection(db, 'quiz_questions');
+      const querySnapshot = await getDocs(q);
+      const questionsMap: Record<string, any[]> = {};
+      querySnapshot.forEach((docSnap) => {
+        questionsMap[docSnap.id] = docSnap.data().questions || [];
+      });
+      return questionsMap;
+    } catch (err) {
+      console.error("Error fetching quiz questions:", err);
+      return {};
+    }
+  }
+
+  async saveQuizQuestions(questionsMap: Record<string, any[]>): Promise<void> {
+    if (!db) return;
+    try {
+      const batch = writeBatch(db);
+      Object.keys(questionsMap).forEach(quizId => {
+        const docRef = doc(db, 'quiz_questions', quizId);
+        batch.set(docRef, { questions: questionsMap[quizId] });
+      });
+      await batch.commit();
+    } catch (err) {
+      console.error("Error saving quiz questions:", err);
+      throw err;
+    }
+  }
+
+  // --- Mock Interviews API ---
+  async getInterviewBank(): Promise<any[]> {
+    if (!db) return [];
+    try {
+      const docRef = doc(db, 'interview_banks', 'global');
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return docSnap.data().questions || [];
+      }
+      return [];
+    } catch (err) {
+      console.error("Error fetching interview bank:", err);
+      return [];
+    }
+  }
+
+  // --- Contests API ---
+  async getContests(): Promise<any[]> {
+    if (!db) return [];
+    try {
+      const q = collection(db, 'contests');
+      const querySnapshot = await getDocs(q);
+      const list: any[] = [];
+      querySnapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      return list;
+    } catch (err) {
+      console.error("Error fetching contests:", err);
+      return [];
+    }
+  }
+
+  async saveContest(contest: any): Promise<void> {
+    if (!db) return;
+    try {
+      await setDoc(doc(db, 'contests', contest.id.toString()), contest);
+    } catch (err) {
+      console.error("Error saving contest:", err);
+      throw err;
+    }
+  }
+
+  async updateContest(id: string, updates: any): Promise<void> {
+    if (!db) return;
+    try {
+      await updateDoc(doc(db, 'contests', id), updates);
+    } catch (err) {
+      console.error("Error updating contest:", err);
+      throw err;
+    }
+  }
+
+  async deleteContest(id: string): Promise<void> {
+    if (!db) return;
+    try {
+      await deleteDoc(doc(db, 'contests', id));
+    } catch (err) {
+      console.error("Error deleting contest:", err);
+      throw err;
+    }
+  }
+
+  // --- Company Permissions API ---
+  async getCompanyPermissions(): Promise<any> {
+    if (!db) return { permissions: [], requests: [] };
+    try {
+      const docRef = doc(db, 'company_data', 'global');
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return docSnap.data();
+      }
+      return { permissions: [], requests: [] };
+    } catch (err) {
+      console.error("Error fetching company permissions:", err);
+      return { permissions: [], requests: [] };
+    }
+  }
+
+  async saveCompanyPermissions(data: any): Promise<void> {
+    if (!db) return;
+    try {
+      await setDoc(doc(db, 'company_data', 'global'), data, { merge: true });
+    } catch (err) {
+      console.error("Error saving company permissions:", err);
+      throw err;
+    }
+  }
+
+  // --- User Progress API (Bookmarks, Solved, etc) ---
+  async getUserProgress(userId: string): Promise<any> {
+    if (!db) return { bookmarks: [], solved: [] };
+    try {
+      const docRef = doc(db, 'user_progress', userId);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        return docSnap.data();
+      }
+      return { bookmarks: [], solved: [] };
+    } catch (err) {
+      console.error("Error fetching user progress:", err);
+      return { bookmarks: [], solved: [] };
+    }
+  }
+
+  async updateUserProgress(userId: string, data: any): Promise<void> {
+    if (!db) return;
+    try {
+      await setDoc(doc(db, 'user_progress', userId), data, { merge: true });
+    } catch (err) {
+      console.error("Error updating user progress:", err);
+      throw err;
+    }
+  }
+
+  // --- Users API (for mock_users_data fallback) ---
+  async getUsersData(): Promise<any[]> {
+    if (!db) return [];
+    try {
+      const q = collection(db, 'users');
+      const querySnapshot = await getDocs(q);
+      const list: any[] = [];
+      querySnapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      return list;
+    } catch (err) {
+      console.error("Error fetching users:", err);
+      return [];
+    }
+  }
+
+  async saveInterviewBank(questions: any[]): Promise<void> {
+    if (!db) return;
+    try {
+      await setDoc(doc(db, 'interview_banks', 'global'), {
+        questions,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Error saving interview bank:", err);
+      throw err;
     }
   }
 }

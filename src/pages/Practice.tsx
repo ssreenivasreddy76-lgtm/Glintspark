@@ -47,7 +47,7 @@ export default function Practice() {
                 className="relative p-[1px] rounded-2xl bg-gradient-to-b from-slate-200 to-slate-100 hover:from-blue-400 hover:to-cyan-400 transition-all duration-500 shadow-sm hover:shadow-xl hover:shadow-blue-500/15 group overflow-hidden hover:-translate-y-1"
               >
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-0"></div>
-                <div className="h-full bg-white/95 backdrop-blur-xl rounded-[15px] p-6 flex flex-col items-center gap-4 transition-all relative z-10 group-hover:bg-white/90">
+                <div className="h-full bg-white backdrop-blur-xl rounded-[15px] p-6 flex flex-col items-center gap-4 transition-all relative z-10 group-hover:bg-white">
                   <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-white group-hover:shadow-md transition-all shrink-0">
                     <div className="group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300 scale-125">{skill.icon}</div>
                   </div>

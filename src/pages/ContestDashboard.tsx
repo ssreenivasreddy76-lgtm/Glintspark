@@ -2,21 +2,36 @@ import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Trophy, Clock, Users, ArrowLeft, CheckCircle2, ChevronRight, Lock, Code2, Play } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { supabase } from '../services/supabaseService';
+import { supabase, supabaseDB } from '../services/supabaseService';
 import { firebaseDB } from '../services/firebaseService';
 import { useChallenges } from '../contexts/ChallengesContext';
 
 // ── Countdown Hook ────────────────────────────────────────────
-function useCountdown(targetSeconds: number) {
-  const [secs, setSecs] = useState(targetSeconds);
+function useContestTimer(contest: any) {
+  const [secs, setSecs] = useState<number | null>(null);
+
   useEffect(() => {
-    const id = setInterval(() => setSecs(s => (s > 0 ? s - 1 : 0)), 1000);
+    if (!contest || !contest.date) return;
+    
+    const update = () => {
+      const durationMins = contest.duration || 20;
+      const startMs = new Date(contest.date).getTime();
+      const endMs = startMs + (durationMins * 60 * 1000);
+      const remaining = Math.max(0, Math.floor((endMs - Date.now()) / 1000));
+      setSecs(remaining);
+    };
+    
+    update();
+    const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [contest]);
+
+  if (secs === null) return { formatted: '--:--:--', isEnded: false };
+
   const h = String(Math.floor(secs / 3600)).padStart(2, '0');
   const m = String(Math.floor((secs % 3600) / 60)).padStart(2, '0');
   const s = String(secs % 60).padStart(2, '0');
-  return `${h}:${m}:${s}`;
+  return { formatted: `${h}:${m}:${s}`, isEnded: secs <= 0 };
 }
 
 const diffColor: Record<string, string> = {
@@ -32,7 +47,9 @@ export default function ContestDashboard() {
   const [contest, setContest] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('challenges');
   const [solvedIds, setSolvedIds] = useState<string[]>([]);
-  const countdown = useCountdown(5085); // 01:24:45
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
+  const { formatted: countdown, isEnded } = useContestTimer(contest);
 
   useEffect(() => {
     async function fetchSolved() {
@@ -52,31 +69,91 @@ export default function ContestDashboard() {
   }, []);
 
   useEffect(() => {
-    // 1. Try to find in localStorage (custom created contests)
-    const stored = JSON.parse(localStorage.getItem('glintspark_contests') || '[]');
-    const foundLocal = stored.find((c: any) => c.id.toString() === id);
-    
-    if (foundLocal) {
-      if (!foundLocal.problems || foundLocal.problems.length === 0) {
-        // Fallback for contests created before problems were saved
-        foundLocal.problems = ['1d-arrays', 'the-pads', 'tree-preorder', 'matrix-script'];
+    async function loadContest() {
+      try {
+        const dbContests = await firebaseDB.getContests();
+        const found = dbContests.find((c: any) => c.id.toString() === id);
+        if (found) {
+          if (!found.problems || found.problems.length === 0) {
+            found.problems = ['1d-arrays', 'the-pads', 'tree-preorder', 'matrix-script'];
+          }
+          setContest(found);
+          return;
+        }
+      } catch (err) {
+        console.error("Failed to load contest from Firebase:", err);
       }
-      setContest(foundLocal);
-      return;
-    }
 
-    // 2. Otherwise it's a hardcoded default contest
-    // We give it some mock problems from the pool
-    setContest({
-      id,
-      title: `Contest ${id}`,
-      type: 'Rated',
-      date: 'Tomorrow, 8:00 PM',
-      participants: '12,402',
-      prize: '300 Glintos',
-      problems: ['1d-arrays', 'the-pads', 'tree-preorder', 'matrix-script'] // Mock defaults
-    });
+      // Fallback for hardcoded default contests
+      setContest({
+        id,
+        title: `Contest ${id}`,
+        type: 'Rated',
+        date: 'Tomorrow, 8:00 PM',
+        participants: '12,402',
+        prize: '300 Glintos',
+        problems: ['1d-arrays', 'the-pads', 'tree-preorder', 'matrix-script'] // Mock defaults
+      });
+    }
+    loadContest();
   }, [id]);
+
+  useEffect(() => {
+    async function fetchLeaderboard() {
+      if (activeTab === 'leaderboard' && isEnded && contest?.problems) {
+        setIsLoadingLeaderboard(true);
+        try {
+          const durationMins = contest.duration || 20;
+          const startMs = new Date(contest.date).getTime();
+          const endMs = startMs + (durationMins * 60 * 1000);
+          
+          const submissions = await supabaseDB.getContestLeaderboardSubmissions(contest.problems, startMs, endMs);
+          
+          // Group by user
+          const userScores: Record<string, { username: string, avatar: string, totalScore: number, solvedSet: Set<string>, lastSubmitTime: number }> = {};
+          
+          submissions.forEach((sub: any) => {
+            if (sub.status === 'PASS') {
+              if (!userScores[sub.userId]) {
+                userScores[sub.userId] = {
+                  username: sub.users.username,
+                  avatar: sub.users.avatar_url,
+                  totalScore: 0,
+                  solvedSet: new Set(),
+                  lastSubmitTime: 0
+                };
+              }
+              const userStat = userScores[sub.userId];
+              if (!userStat.solvedSet.has(sub.challengeId)) {
+                userStat.solvedSet.add(sub.challengeId);
+                const prob = challengePool.find((p: any) => p.id === sub.challengeId);
+                userStat.totalScore += (prob?.points || 10);
+                
+                const subTime = new Date(sub.createdAt).getTime();
+                if (subTime > userStat.lastSubmitTime) {
+                  userStat.lastSubmitTime = subTime;
+                }
+              }
+            }
+          });
+          
+          const ranked = Object.values(userScores).map(u => ({
+            username: u.username,
+            avatar: u.avatar,
+            score: u.totalScore,
+            solvedCount: u.solvedSet.size,
+            time: u.lastSubmitTime
+          })).sort((a, b) => b.score - a.score || a.time - b.time);
+          
+          setLeaderboard(ranked);
+        } catch (err) {
+          console.error("Failed to load contest leaderboard:", err);
+        }
+        setIsLoadingLeaderboard(false);
+      }
+    }
+    fetchLeaderboard();
+  }, [activeTab, isEnded, contest, challengePool]);
 
   if (!contest) return <div className="min-h-screen bg-[#f3f7f7] flex items-center justify-center">Loading...</div>;
 
@@ -179,16 +256,19 @@ export default function ContestDashboard() {
                               {prob.successRate}
                             </td>
                             <td className="px-6 py-4 text-right">
-                              {isSolved ? (
-                                <span className="inline-block px-5 py-2 text-emerald-600 font-bold text-[12px] uppercase tracking-wider">Solved</span>
-                              ) : (
-                                <button
-                                  onClick={() => navigate(`/challenges/${prob.id}?contest=true`)}
-                                  className="px-5 py-2 border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 rounded-[4px] font-bold text-[12px] uppercase tracking-wider transition active:scale-95 shadow-sm"
-                                >
-                                  Solve Challenge
-                                </button>
-                              )}
+                                  {isEnded ? (
+                                    <span className="inline-flex whitespace-nowrap items-center justify-center h-9 px-4 rounded font-bold text-[13px] bg-slate-100 text-slate-400">
+                                      Ended
+                                    </span>
+                                  ) : isSolved ? (
+                                    <span className="inline-flex whitespace-nowrap items-center justify-center h-9 px-4 rounded font-bold text-[13px] bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                      <CheckCircle2 size={16} className="mr-1.5" /> Solved
+                                    </span>
+                                  ) : (
+                                    <Link to={`/challenges/${prob.id}?contest=true`} className="inline-flex whitespace-nowrap items-center justify-center h-9 px-4 rounded font-bold text-[13px] bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
+                                      Solve Challenge
+                                    </Link>
+                                  )}
                             </td>
                           </tr>
                         );
@@ -207,10 +287,48 @@ export default function ContestDashboard() {
           )}
 
           {activeTab === 'leaderboard' && (
-            <div className="bg-white border border-slate-200 rounded-[4px] p-16 text-center text-slate-500">
-              <Trophy size={40} className="text-slate-300 mx-auto mb-4" />
-              <h3 className="text-lg font-bold text-slate-800">Leaderboard Hidden</h3>
-              <p className="text-sm mt-1">The leaderboard will be revealed after the contest ends.</p>
+            <div className="bg-white border border-slate-200 rounded-[4px] shadow-sm overflow-hidden">
+              {!isEnded ? (
+                <div className="p-16 text-center text-slate-500">
+                  <Trophy size={40} className="text-slate-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-bold text-slate-800">Leaderboard Hidden</h3>
+                  <p className="text-sm mt-1">The leaderboard will be revealed after the contest ends.</p>
+                </div>
+              ) : isLoadingLeaderboard ? (
+                <div className="p-16 flex justify-center">
+                  <div className="w-8 h-8 border-4 border-brand-primary border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : leaderboard.length > 0 ? (
+                <table className="w-full text-left text-[14px] border-collapse">
+                  <thead className="bg-[#f8fafc] border-b border-slate-200 text-[#738f9c] font-bold uppercase tracking-wider text-[11px]">
+                    <tr>
+                      <th className="px-6 py-4 w-20 text-center">Rank</th>
+                      <th className="px-6 py-4">Hacker</th>
+                      <th className="px-6 py-4 text-center">Solved</th>
+                      <th className="px-6 py-4 text-right">Score</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {leaderboard.map((user, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-6 py-4 text-center font-bold text-slate-500">#{idx + 1}</td>
+                        <td className="px-6 py-4 flex items-center gap-3">
+                          <img src={user.avatar} alt="Avatar" className="w-8 h-8 rounded-full border border-slate-200 object-cover" />
+                          <span className="font-bold text-[#0e141e]">{user.username}</span>
+                        </td>
+                        <td className="px-6 py-4 text-center text-slate-600 font-semibold">{user.solvedCount} / {contestProblems.length}</td>
+                        <td className="px-6 py-4 text-right font-mono font-bold text-emerald-600">{user.score}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="p-16 text-center text-slate-500">
+                  <Trophy size={40} className="text-slate-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-bold text-slate-800">No Participants</h3>
+                  <p className="text-sm mt-1">No one solved any problems during this contest.</p>
+                </div>
+              )}
             </div>
           )}
 

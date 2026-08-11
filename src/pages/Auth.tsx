@@ -24,7 +24,16 @@ export default function Auth() {
   useEffect(() => {
     if (user) {
       sessionStorage.removeItem('isGuest');
-      navigate(from, { replace: true });
+      
+      // Dynamic Admin Redirection
+      const userEmail = user.email?.toLowerCase() || '';
+      if (userEmail === 'founder@glintspark.in') {
+        navigate('/admin/master', { replace: true });
+      } else if (userEmail === 'sreenivas@gmail.com' || userEmail.includes('srit')) {
+        navigate('/admin/college', { replace: true });
+      } else {
+        navigate(from, { replace: true });
+      }
     }
   }, [user, navigate, from]);
 
@@ -58,28 +67,12 @@ export default function Auth() {
     setError(null);
     setSuccessMsg(null);
 
-    // --- SECURITY INTERCEPTION (CAPTCHA) ---
-    // Validate CAPTCHA
-    if (!isHuman) {
-      setError("Please verify that you are human.");
-      setLoading(false);
-      return;
-    }
+    // --- SECURITY INTERCEPTION (CAPTCHA REMOVED) ---
 
     // Pre-validate Sign Up forms
     if (!isLogin) {
-      if (password.length < 8) {
-        setError("Password must be at least 8 characters long.");
-        setLoading(false);
-        return;
-      }
-      if (!/[A-Z]/.test(password)) {
-        setError("Password must contain at least one uppercase letter.");
-        setLoading(false);
-        return;
-      }
-      if (!/[0-9]/.test(password)) {
-        setError("Password must contain at least one number.");
+      if (password.length < 6) {
+        setError("Password must be at least 6 characters long.");
         setLoading(false);
         return;
       }
@@ -99,29 +92,7 @@ export default function Auth() {
     // ---------------------------------------------
 
     try {
-      // --- HARDCODED DEMO CREDENTIALS ---
-      if (isLogin) {
-        const checkEmail = email.trim().toLowerCase();
-        const checkPass = password.trim();
-        if (checkEmail === 'admin@glintspark.com' && checkPass === 'founder@123') {
-          localStorage.setItem('mock_role', 'admin');
-          window.location.href = '/admin';
-          return;
-        }
-        if (checkEmail === 'company@glintspark.com' && checkPass === 'company@123') {
-          localStorage.setItem('mock_role', 'company');
-          window.location.href = '/company';
-          return;
-        }
-        if (checkEmail === 'admin@srit.ac.in' && checkPass === 'srit@123') {
-          // Store actual email in session storage so AuthContext and Leaderboard can read it
-          sessionStorage.setItem('mock_email', 'admin@srit.ac.in');
-          localStorage.setItem('mock_role', 'company');
-          window.location.href = '/company';
-          return;
-        }
-      }
-      // ----------------------------------
+      // Admin local storage bypass removed to enforce real authentication
 
       // Relaxed company access for checkout demo
       // if (userRole === 'company' && !email.trim().toLowerCase().endsWith('@glintspark.team')) {
@@ -130,59 +101,7 @@ export default function Auth() {
 
       if (isLogin) {
 
-        // 1. Validate if email exists in our registered users database
-        const { data: userCheck, error: checkErr } = await supabase
-          .from('users')
-          .select('id')
-          .eq('email', email.trim());
-
-        // --- COMPANY LOGIN MOCK CHECK ---
-        if (userRole === 'company') {
-          let paidCompanies: Record<string, any> = {};
-          try {
-            const raw = localStorage.getItem('mock_paid_companies');
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              if (Array.isArray(parsed)) {
-                // Migrate old array format
-                parsed.forEach(email => paidCompanies[email] = { type: 'full', expiresAt: null });
-              } else {
-                paidCompanies = parsed;
-              }
-            }
-          } catch(e) {}
-          
-          const companyRecord = paidCompanies[email.trim().toLowerCase()];
-
-          if (!companyRecord && (!userCheck || userCheck.length === 0)) {
-            // Not paid and no account - redirect to checkout!
-            setIsLogin(false);
-            setCheckoutStep(2);
-            setLoading(false);
-            return;
-          } else if (companyRecord) {
-            // Check trial expiration
-            if (companyRecord.type === 'trial' && companyRecord.expiresAt && Date.now() > companyRecord.expiresAt) {
-              setError("Your 1-month free trial has expired. Please purchase a full license to regain access to your dashboard.");
-              setIsLogin(false);
-              setCheckoutStep(2);
-              setLoading(false);
-              return;
-            }
-            // Mock success for any company login if they are in the paid list and not expired
-            sessionStorage.setItem('mock_email', email.trim());
-            localStorage.setItem('mock_role', 'company');
-            window.location.href = '/company';
-            return;
-          }
-        }
-        // ----------------------------------
-
-        if (checkErr) {
-          console.warn("DB email check failed, falling back to standard login:", checkErr);
-        } else if (!userCheck || userCheck.length === 0) {
-          throw new Error("This email address is not registered. Please check the spelling or create an account.");
-        }
+        // We use true Supabase Auth now for company login as well.
 
         // 2. Sign In Flow
         const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -198,44 +117,8 @@ export default function Auth() {
         sessionStorage.setItem('mock_email', email.trim().toLowerCase());
         // Navigation is handled by useEffect
       } else {
-        // --- COMPANY MOCK CHECKOUT FLOW ---
-        if (userRole === 'company') {
-          if (checkoutStep === 1) {
-            // Validation moved to Security Interception
-            setCheckoutStep(2);
-            setLoading(false);
-            return;
-          }
-          if (checkoutStep === 2) {
-            // Simulate Payment Processing
-            await new Promise(r => setTimeout(r, 1500));
-            // Mock Success: Save to paid list
-            let paidCompanies: Record<string, any> = {};
-            try {
-              const raw = localStorage.getItem('mock_paid_companies');
-              if (raw) {
-                const parsed = JSON.parse(raw);
-                if (Array.isArray(parsed)) {
-                  parsed.forEach(e => paidCompanies[e] = { type: 'full', expiresAt: null });
-                } else {
-                  paidCompanies = parsed;
-                }
-              }
-            } catch(e) {}
-            
-            // If contractYears is 0, it's a trial. 30 days = 30 * 24 * 60 * 60 * 1000 = 2592000000 ms
-            paidCompanies[email.trim().toLowerCase()] = {
-              type: contractYears === 0 ? 'trial' : 'full',
-              expiresAt: contractYears === 0 ? Date.now() + 2592000000 : null
-            };
-            localStorage.setItem('mock_paid_companies', JSON.stringify(paidCompanies));
-            
-            sessionStorage.setItem('mock_email', email.trim());
-            localStorage.setItem('mock_role', 'company');
-            window.location.href = '/company';
-            return;
-          }
-        }
+        // --- COMPANY MOCK CHECKOUT FLOW REMOVED ---
+        // We now allow company signups to proceed directly to Supabase Auth.
         // ----------------------------------
 
         const { data, error: signUpError } = await supabase.auth.signUp({
@@ -245,6 +128,7 @@ export default function Auth() {
             data: {
               name: name || 'User',
               first_name: name ? name.split(' ')[0] : 'User',
+              role: userRole,
             },
           },
         });
@@ -273,6 +157,7 @@ export default function Auth() {
               unlocked_lesson_ids: ['c1'],
               xp: 0,
               streak: 0,
+              role: userRole,
             });
           }
         }
@@ -285,7 +170,8 @@ export default function Auth() {
         }
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred during authentication.');
+      console.error(err);
+      setError(err.message || 'An error occurred during authentication. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -307,7 +193,27 @@ export default function Auth() {
       });
       if (oauthError) throw oauthError;
     } catch (err: any) {
-      setError(err.message || `An error occurred with ${provider} login.`);
+      setError(`An error occurred with ${provider} login. Please try again.`);
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setError("Please enter your email address first.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      if (resetError) throw resetError;
+      setSuccessMsg("Password reset link sent! Check your email.");
+    } catch (err: any) {
+      setError(err.message || "Failed to send reset email. Please try again.");
+    } finally {
       setLoading(false);
     }
   };
@@ -376,9 +282,9 @@ export default function Auth() {
         <div className="w-full max-w-[420px] relative z-10">
           
           {/* Role Switcher */}
-          <div className="flex p-1.5 bg-slate-100/80 backdrop-blur-md rounded-2xl mb-12 shadow-inner border border-slate-200/60 relative">
+          <div className="flex p-1.5 bg-slate-100/80 backdrop-blur-md rounded-2xl mb-12 shadow-inner border border-slate-200 relative">
             <motion.div 
-              className="absolute top-1.5 bottom-1.5 w-[calc(50%-0.375rem)] bg-white rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.06)] border border-slate-200/50 z-0"
+              className="absolute top-1.5 bottom-1.5 w-[calc(50%-0.375rem)] bg-white rounded-xl shadow-[0_2px_10px_rgba(0,0,0,0.06)] border border-slate-200 z-0"
               initial={false}
               animate={{ x: userRole === 'developer' ? 0 : '100%' }}
               transition={{ type: "spring", stiffness: 300, damping: 25 }}
@@ -398,7 +304,7 @@ export default function Auth() {
                 userRole === 'company' ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              <Globe size={16} className={userRole === 'company' ? 'text-fuchsia-600' : ''} /> Company
+              <Globe size={16} className={userRole === 'company' ? 'text-fuchsia-600' : ''} /> College
             </button>
           </div>
 
@@ -435,7 +341,7 @@ export default function Auth() {
               )}
 
               {/* Form Elements */}
-              <form className="space-y-4" onSubmit={handleAuth}>
+              <form className="space-y-4" onSubmit={handleAuth} autoComplete="off">
                 
                 {/* --- OTP VERIFICATION STEP --- */}
                 {showOTP ? (
@@ -473,43 +379,6 @@ export default function Auth() {
                       Didn't receive a code? <span className="text-brand-primary font-bold cursor-pointer hover:underline">Resend</span>
                     </p>
                   </div>
-                ) : !isLogin && userRole === 'company' && checkoutStep === 2 ? (
-                  <div className="space-y-6">
-                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
-                      <h3 className="font-black text-slate-900 mb-4">Select Contract Duration</h3>
-                      <div className="space-y-3">
-                        {[0, 1, 2, 3, 5].map((years) => (
-                          <label key={years} className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-all ${contractYears === years ? 'border-brand-primary bg-brand-primary/5 shadow-sm' : 'border-slate-200 hover:border-brand-primary/50 bg-white'}`}>
-                            <div className="flex items-center gap-3">
-                              <input type="radio" name="contract" value={years} checked={contractYears === years} onChange={() => setContractYears(years)} className="text-brand-primary focus:ring-brand-primary h-4 w-4" />
-                              <span className="font-bold text-slate-700">
-                                {years === 0 ? '1 Month Free Trial' : `${years} ${years === 1 ? 'Year' : 'Years'} License`}
-                              </span>
-                            </div>
-                            <span className="font-black text-slate-900">
-                              {years === 0 ? 'Free' : `$${(PRICE_PER_YEAR * years).toLocaleString()}`}
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                      
-                      <div className="mt-6 pt-4 border-t border-slate-200 flex justify-between items-end">
-                        <div>
-                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Total Due</p>
-                          <p className="text-3xl font-black text-brand-primary">${(PRICE_PER_YEAR * contractYears).toLocaleString()}</p>
-                        </div>
-                        <button type="button" onClick={() => setCheckoutStep(1)} className="text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors">Back</button>
-                      </div>
-                    </div>
-                    
-                    <button 
-                      type="submit"
-                      disabled={loading}
-                      className="w-full bg-slate-900 hover:bg-brand-primary hover:-translate-y-0.5 disabled:bg-slate-500 disabled:hover:translate-y-0 text-white font-bold py-4 px-4 rounded-xl transition-all duration-300 shadow-xl shadow-brand-primary/20 flex items-center justify-center gap-2"
-                    >
-                      {loading ? <Loader2 size={18} className="animate-spin" /> : (contractYears === 0 ? 'Start Free Trial' : 'Process Payment & Generate License')}
-                    </button>
-                  </div>
                 ) : (
                   <>
                     {!isLogin && (
@@ -525,6 +394,7 @@ export default function Auth() {
                             onChange={(e) => setName(e.target.value)}
                             className="w-full pl-11 pr-4 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
                             required
+                            autoComplete="off"
                           />
                         </div>
                       </div>
@@ -541,7 +411,8 @@ export default function Auth() {
                         onChange={(e) => setEmail(e.target.value)}
                         className="w-full pl-11 pr-4 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
                         required
-                        autoComplete="email"
+                        autoComplete="off"
+                        name="email_prevent_autofill"
                       />
                     </div>
 
@@ -587,7 +458,7 @@ export default function Auth() {
                         onChange={(e) => setPassword(e.target.value)}
                         className="w-full pl-11 pr-12 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"
                         required
-                        autoComplete={isLogin ? "current-password" : "new-password"}
+                        autoComplete="new-password"
                       />
                       <button
                         type="button"
@@ -597,6 +468,19 @@ export default function Auth() {
                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
+
+                    {isLogin && (
+                      <div className="flex justify-end pt-1">
+                        <button 
+                          type="button" 
+                          onClick={handleForgotPassword}
+                          disabled={loading}
+                          className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-colors"
+                        >
+                          Forgot Password?
+                        </button>
+                      </div>
+                    )}
 
                     {!isLogin && (
                       <div className="pt-2 px-1">
@@ -648,15 +532,7 @@ export default function Auth() {
                       </>
                     )}
 
-                    {/* --- CAPTCHA WIDGET --- */}
-                    <div className="pt-2 flex justify-center">
-                      <ReCAPTCHA
-                        sitekey="6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
-                        onChange={(val) => setIsHuman(!!val)}
-                        theme="light"
-                      />
-                    </div>
-                    {/* ---------------------- */}
+                    {/* --- CAPTCHA WIDGET REMOVED --- */}
 
                     <div className="pt-3">
                       <button 
@@ -667,7 +543,7 @@ export default function Auth() {
                         {loading ? (
                           <Loader2 size={18} className="animate-spin" />
                         ) : (
-                          isLogin ? (userRole === 'developer' ? 'Sign In' : 'Enterprise Log In') : (userRole === 'developer' ? 'Create Account' : 'Continue to Checkout')
+                          isLogin ? (userRole === 'developer' ? 'Sign In' : 'Enterprise Log In') : (userRole === 'developer' ? 'Create Account' : 'Create Enterprise Account')
                         )}
                       </button>
                     </div>

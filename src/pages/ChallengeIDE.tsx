@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { executeWithWaterfall, type ExecutionResult } from '../services/executionService';
-import { Play, Check, ChevronLeft, ChevronRight, Settings, Layout, Maximize2, Terminal, Code2, AlertTriangle, RotateCcw, ChevronDown, Lock, Trophy, Clock, CheckCircle2, MessageSquare, Sparkles, Upload } from 'lucide-react';
-import MonacoEditor from '@monaco-editor/react';
+import { Play, Check, ChevronLeft, ChevronRight, Settings, Layout, Maximize2, Terminal, Code2, AlertTriangle, RotateCcw, ChevronDown, Lock, Trophy, Clock, CheckCircle2, MessageSquare, Sparkles, Upload, Loader2 } from 'lucide-react';
+import MonacoEditor, { loader } from '@monaco-editor/react';
+
+// Use cloudflare CDN for faster loading of Monaco resources
+loader.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.43.0/min/vs' } });
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { supabase, supabaseDB } from '../services/supabaseService';
 import { firebaseDB } from '../services/firebaseService';
@@ -177,6 +180,51 @@ export default function ChallengeIDE() {
   const isProctored = shouldProctor && activeTab === 'Problem' && !hasSolved;
   const [warnings, setWarnings] = useState(0);
   const [isFocused, setIsFocused] = useState(true);
+  const phonePenaltyCooldownRef = useRef(false);
+
+  const [userProgress, setUserProgress] = useState<any>({});
+
+  useEffect(() => {
+    if (user) {
+      firebaseDB.getUserProgress(user._id).then(progress => {
+        if (progress) setUserProgress(progress);
+      });
+    }
+  }, [user]);
+
+  // Check if locked on load
+  useEffect(() => {
+    if (userProgress.proctorLockUntil && Date.now() < userProgress.proctorLockUntil) {
+      alert("Your account is currently locked due to multiple proctoring violations. Please try again after 1 hour.");
+      navigate('/practice');
+    }
+  }, [userProgress, navigate]);
+
+  const triggerProctorViolation = useCallback((reason: string) => {
+    if (!user) return;
+    setWarnings(w => {
+      const newWarnings = w + 1;
+      const currentXp = user.xp || 0;
+      const newXp = currentXp - 5;
+      const newPenalty = (userProgress.penalties || 0) + 5;
+      
+      // Update local state so subsequent violations in the same session stack properly
+      setUserProgress((prev: any) => ({ ...prev, penalties: newPenalty }));
+      
+      if (newWarnings >= 2) {
+        const lockTime = Date.now() + 60 * 60 * 1000;
+        firebaseDB.updateUserProgress(user._id, { penalties: newPenalty, proctorLockUntil: lockTime });
+        try { supabaseDB.updateOne(user._id, { xp: newXp }); } catch (e) {}
+        alert(`ACCOUNT LOCKED: ${reason}. 5 marks deducted. You have violated proctoring rules 2 times and are locked out for 1 hour.`);
+        navigate('/practice');
+      } else {
+        firebaseDB.updateUserProgress(user._id, { penalties: newPenalty });
+        try { supabaseDB.updateOne(user._id, { xp: newXp }); } catch (e) {}
+        alert(`Warning: ${reason}. 5 marks have been deducted. 1 more violation will result in a 1-hour lock.`);
+      }
+      return newWarnings;
+    });
+  }, [user, userProgress, navigate]);
 
   // AI State
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -230,7 +278,8 @@ export default function ChallengeIDE() {
       
       Make your response clear, structured, and helpful. Use markdown. Keep it concise (2-4 paragraphs max).`;
 
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8080';
+      const defaultApiUrl = import.meta.env.DEV ? 'http://127.0.0.1:8080' : 'https://api.glintspark.in';
+      const apiUrl = import.meta.env.VITE_API_URL || defaultApiUrl;
       const response = await fetch(`${apiUrl}/api/ai/chat`, {
         method: 'POST',
         headers: {
@@ -297,6 +346,13 @@ export default function ChallengeIDE() {
             
             if (foundPhone) {
               setAiPhoneDetected(true);
+              
+              if (!phonePenaltyCooldownRef.current) {
+                phonePenaltyCooldownRef.current = true;
+                triggerProctorViolation("Mobile device / camera detected in view");
+                setTimeout(() => { phonePenaltyCooldownRef.current = false; }, 60000); // 1 min cooldown
+              }
+
               // Hold the lock for 5 seconds to prevent flashing if the phone turns sideways
               if (phoneLockTimeoutRef.current) clearTimeout(phoneLockTimeoutRef.current);
               phoneLockTimeoutRef.current = setTimeout(() => {
@@ -331,8 +387,7 @@ export default function ChallengeIDE() {
     
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        setWarnings(w => w + 1);
-        alert("Warning: Tab switching or losing screen focus is not allowed! 5 marks will be deducted for this violation.");
+        triggerProctorViolation("Tab switching or losing screen focus is not allowed");
       }
     };
     
@@ -518,25 +573,24 @@ export default function ChallengeIDE() {
         const examples = problem.examples || [];
         if (examples.length === 0) throw new Error("No sample test cases available.");
         
-        let passedCount = 0;
-        const testCaseResults = [];
-        for (let i = 0; i < examples.length; i++) {
-          const ex = examples[i];
+        const executionPromises = examples.map(async (ex, i) => {
           const result = await runCode(lang.id, code, ex.input);
           const actual = (result.stdout || '').trim();
           const expected = (ex.output || '').trim();
           const passed = actual === expected || actual === '__MOCK_PASS__';
-          if (passed) passedCount++;
           
-          testCaseResults.push({
+          return {
             name: `Sample Case ${i}`,
             input: ex.input,
             expected: expected,
             actual: actual,
             passed: passed,
             stderr: result.stderr
-          });
-        }
+          };
+        });
+        
+        const testCaseResults = await Promise.all(executionPromises);
+        const passedCount = testCaseResults.filter(tc => tc.passed).length;
         
         setOutput({ type: 'run', passed: passedCount, total: examples.length, testCases: testCaseResults });
       }
@@ -562,26 +616,24 @@ export default function ChallengeIDE() {
         throw new Error('No test cases defined for this problem.');
       }
 
-      let passedCount = 0;
-      const testCaseResults = [];
-
-      for (let i = 0; i < problem.testCases.length; i++) {
-        const tc = problem.testCases[i];
+      const executionPromises = problem.testCases.map(async (tc, i) => {
         const result = await runCode(lang.id, code, tc.input);
         const actual = (result.stdout || '').trim();
         const expected = (tc.expected || '').trim();
         const passed = actual === expected || actual === '__MOCK_PASS__';
-        if (passed) passedCount++;
         
-        testCaseResults.push({
+        return {
           name: `Test Case ${i}`,
           input: tc.input,
           expected: expected,
           actual: actual,
           passed: passed,
           stderr: result.stderr
-        });
-      }
+        };
+      });
+
+      const testCaseResults = await Promise.all(executionPromises);
+      const passedCount = testCaseResults.filter(tc => tc.passed).length;
 
       const allPassed = passedCount === problem.testCases.length;
 
@@ -621,16 +673,18 @@ export default function ChallengeIDE() {
       }
 
       if (allPassed) {
-        // Save to local storage as fallback/immediate UI update regardless of Auth state
-        try {
-          const localSolved = JSON.parse(localStorage.getItem('glintspark_solved') || '[]');
-          const challengeIdToSave = id || 'solve-me-first';
-          if (!localSolved.includes(challengeIdToSave)) {
-            localSolved.push(challengeIdToSave);
-            localStorage.setItem('glintspark_solved', JSON.stringify(localSolved));
+        if (user) {
+          try {
+            const progress = await firebaseDB.getUserProgress(user._id);
+            const solved = progress.solved || [];
+            const challengeIdToSave = id || 'solve-me-first';
+            if (!solved.includes(challengeIdToSave)) {
+              solved.push(challengeIdToSave);
+              await firebaseDB.updateUserProgress(user._id, { solved });
+            }
+          } catch (e) {
+            console.error("Failed to update user solved progress:", e);
           }
-        } catch (e) {
-          console.error(e);
         }
       }
 
@@ -684,8 +738,8 @@ export default function ChallengeIDE() {
         {/* Left Pane (Tabs + Description) */}
         <div style={{ width: `${leftWidth}%` }} className="flex flex-col bg-white z-10 shrink-0 border-r border-slate-300 shadow-sm">
           
-          {/* Horizontal Tabs */}
-          <div className="flex px-2 border-b border-slate-200 bg-[#f3f7f7] overflow-x-auto">
+          {/* Tabs */}
+          <div className="flex bg-[#f3f7f7] border-b border-slate-200 shrink-0 overflow-x-auto scrollbar-hide gap-1 p-2">
             {(isFromContest
               ? (['Problem', 'Submissions', 'Leaderboard', 'Discussions', 'Editorial'] as const)
               : (shouldProctor 
@@ -695,18 +749,15 @@ export default function ChallengeIDE() {
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-3 text-[13px] font-bold tracking-wide transition-colors relative shrink-0 ${
-                  activeTab === tab ? 'text-slate-800' : 'text-slate-500 hover:text-slate-700'
+                className={`px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap rounded-lg ${
+                  activeTab === tab ? 'bg-brand-primary text-white shadow-md' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200'
                 }`}
               >
                 {tab === 'Glintspark AI' ? (
                   <span className="flex items-center gap-1">
-                    <Sparkles size={14} className="text-brand-primary" /> Glintspark AI
+                    <Sparkles size={14} className={activeTab === tab ? "text-white" : "text-brand-primary"} /> Glintspark AI
                   </span>
                 ) : tab}
-                {activeTab === tab && (
-                  <motion.div layoutId="horiz-tab" className="absolute bottom-0 left-0 right-0 h-[3px] bg-brand-primary" />
-                )}
               </button>
             ))}
           </div>
@@ -1122,6 +1173,13 @@ export default function ChallengeIDE() {
               onChange={(value) => setCode(value ?? '')}
               onMount={handleEditorDidMount}
               theme={editorTheme}
+              loading={
+                <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                  <Loader2 className="animate-spin mb-3 text-brand-primary" size={32} />
+                  <p className="font-bold text-[13px] text-slate-600">Initializing Code Editor...</p>
+                  <p className="text-[11px] text-slate-400 mt-1">Fetching resources, this may take a moment on first load.</p>
+                </div>
+              }
               options={{
                 fontSize: editorFontSize,
                 fontFamily: "Menlo, Monaco, 'Courier New', monospace",
@@ -1371,7 +1429,7 @@ export default function ChallengeIDE() {
                         <div className="absolute left-[30%] bottom-[-20px] opacity-20 pointer-events-none">
                           <Sparkles size={100} className="text-white" />
                         </div>
-                        <div className="absolute inset-0 bg-white/5 pointer-events-none"></div>
+                        <div className="absolute inset-0 bg-white pointer-events-none"></div>
                       </>
                     )}
                     
