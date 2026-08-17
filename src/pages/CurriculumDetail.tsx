@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronRight, BookOpen, Sparkles, Trophy, Zap, ShieldAlert, Award, Loader2 } from 'lucide-react';
 import { AdBanner } from '../components/AdBanner';
-import { firebaseDB } from '../services/firebaseService';
+import { supabaseDB } from '../services/supabaseService';
 import { useAuth } from '../contexts/AuthContext';
 
 interface ModuleItem {
@@ -79,7 +79,7 @@ export default function CurriculumDetail() {
       setIsLoading(true);
       let loadedModules: any[] = [];
       try {
-        const modulesFromDB = await firebaseDB.getCurriculum(currentTopic);
+        const modulesFromDB = await supabaseDB.getCurriculum(currentTopic);
         loadedModules = modulesFromDB || [];
       } catch (e) {
         console.error("Failed to fetch curriculum from DB", e);

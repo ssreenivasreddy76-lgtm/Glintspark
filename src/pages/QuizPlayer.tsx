@@ -63,6 +63,147 @@ export const MOCK_QUESTIONS: Record<string, any[]> = {
       options: ['HTML string', 'React Elements', 'DOM nodes', 'JSON object'],
       correctAnswer: 1,
     }
+  ],
+  'core-java-oop': [
+    {
+      id: 1,
+      question: 'Which of the following is not a principle of Object-Oriented Programming in Java?',
+      options: ['Encapsulation', 'Compilation', 'Inheritance', 'Polymorphism'],
+      correctAnswer: 1,
+    },
+    {
+      id: 2,
+      question: 'What is the default value of a boolean variable declared as an instance member in Java?',
+      options: ['true', 'false', 'null', '0'],
+      correctAnswer: 1,
+    },
+    {
+      id: 3,
+      question: 'Which keyword prevents a class from being inherited in Java?',
+      options: ['static', 'sealed', 'final', 'abstract'],
+      correctAnswer: 2,
+    }
+  ],
+  'sql-databases': [
+    {
+      id: 1,
+      question: 'Which SQL clause is used to filter group results after an aggregate function (e.g. GROUP BY)?',
+      options: ['WHERE', 'HAVING', 'ORDER BY', 'FILTER'],
+      correctAnswer: 1,
+    },
+    {
+      id: 2,
+      question: 'In database ACID properties, what does the "I" stand for?',
+      options: ['Integrity', 'Isolation', 'Inheritance', 'Index'],
+      correctAnswer: 1,
+    },
+    {
+      id: 3,
+      question: 'Which JOIN returns all rows from the left table and matching rows from the right table?',
+      options: ['INNER JOIN', 'FULL OUTER JOIN', 'LEFT OUTER JOIN', 'CROSS JOIN'],
+      correctAnswer: 2,
+    }
+  ],
+  'python-mastery': [
+    {
+      id: 1,
+      question: 'What keyword is used in Python to define a generator function that yields values one at a time?',
+      options: ['return', 'yield', 'emit', 'generate'],
+      correctAnswer: 1,
+    },
+    {
+      id: 2,
+      question: 'Which of the following data structures in Python is immutable?',
+      options: ['List', 'Dictionary', 'Set', 'Tuple'],
+      correctAnswer: 3,
+    },
+    {
+      id: 3,
+      question: 'What is the output of `type(lambda x: x)` in Python?',
+      options: ['<class \'function\'>', '<class \'lambda\'>', '<class \'object\'>', '<class \'type\'>'],
+      correctAnswer: 0,
+    }
+  ],
+  'dsa-essentials': [
+    {
+      id: 1,
+      question: 'What is the average time complexity of searching for an element in a balanced Binary Search Tree (AVL/Red-Black)?',
+      options: ['O(1)', 'O(log n)', 'O(n)', 'O(n log n)'],
+      correctAnswer: 1,
+    },
+    {
+      id: 2,
+      question: 'Which algorithmic paradigm does Dijkstra’s Single-Source Shortest Path algorithm follow?',
+      options: ['Divide and Conquer', 'Greedy', 'Dynamic Programming', 'Backtracking'],
+      correctAnswer: 1,
+    },
+    {
+      id: 3,
+      question: 'Which data structure is primarily used to perform a Breadth-First Search (BFS) on a graph?',
+      options: ['Stack', 'Queue', 'Priority Queue', 'Array'],
+      correctAnswer: 1,
+    }
+  ],
+  'os-concurrency': [
+    {
+      id: 1,
+      question: 'Which of the following is NOT one of Coffman\'s four conditions required for a deadlock to occur?',
+      options: ['Mutual Exclusion', 'Hold and Wait', 'Preemption Allowed', 'Circular Wait'],
+      correctAnswer: 2,
+    },
+    {
+      id: 2,
+      question: 'In operating systems, what is "Thrashing"?',
+      options: ['Excessive CPU overclocking', 'High paging activity where the system spends more time swapping than executing', 'Network buffer overflow', 'Process starvation'],
+      correctAnswer: 1,
+    }
+  ],
+  'computer-networks': [
+    {
+      id: 1,
+      question: 'Which layer of the OSI model is responsible for end-to-end communication and reliability (e.g. TCP)?',
+      options: ['Network Layer', 'Transport Layer', 'Data Link Layer', 'Session Layer'],
+      correctAnswer: 1,
+    },
+    {
+      id: 2,
+      question: 'What is the default port number used by secure HTTPS traffic?',
+      options: ['80', '8080', '443', '22'],
+      correctAnswer: 2,
+    }
+  ],
+  'verbal-ability': [
+    {
+      id: 1,
+      question: 'Choose the correct synonym for the word "Meticulous":',
+      options: ['Careless', 'Diligent / Precise', 'Speedy', 'Ambiguous'],
+      correctAnswer: 1,
+    },
+    {
+      id: 2,
+      question: 'Identify the grammatically correct sentence:',
+      options: [
+        'Neither of the candidates have submitted their resume.',
+        'Neither of the candidates has submitted his or her resume.',
+        'Neither of the candidate were present.',
+        'Neither candidates is ready.'
+      ],
+      correctAnswer: 1,
+    }
+  ],
+  'cloud-devops': [
+    {
+      id: 1,
+      question: 'In Docker, what is the file that contains instructions to assemble an automated container image?',
+      options: ['docker-compose.yml', 'Dockerfile', 'Containerfile.json', 'image.spec'],
+      correctAnswer: 1,
+    },
+    {
+      id: 2,
+      question: 'What cloud service model does AWS Lambda or Google Cloud Functions represent?',
+      options: ['IaaS', 'PaaS', 'SaaS', 'FaaS (Serverless)'],
+      correctAnswer: 3,
+    }
   ]
 };
 

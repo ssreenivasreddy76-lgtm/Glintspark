@@ -136,8 +136,8 @@ export default function Pricing() {
               </div>
             </div>
             <Link 
-              to="/auth" 
-              state={{ role: 'developer' }}
+              to="/auth?mode=signup" 
+              state={{ role: 'developer', mode: 'signup' }}
               className="whitespace-nowrap px-6 py-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl transition-colors text-sm"
             >
               Student Sign Up

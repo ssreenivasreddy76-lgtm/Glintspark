@@ -5,6 +5,7 @@ import Landing from './pages/Landing';
 import Auth from './pages/Auth';
 import { DeveloperOnboarding } from './pages/DeveloperOnboarding';
 import Dashboard from './pages/Dashboard';
+import PracticeSheet from './pages/PracticeSheet';
 import Curriculum from './pages/Curriculum';
 import { AdminLock } from './components/AdminLock';
 import MasterAdmin from './pages/MasterAdmin';
@@ -43,6 +44,8 @@ import Quizzes from './pages/Quizzes';
 import QuizPlayer from './pages/QuizPlayer';
 
 import MasterLogin from './pages/MasterLogin';
+import ResetPassword from './pages/ResetPassword';
+import AccountRecovery from './pages/AccountRecovery';
 
 function App() {
   return (
@@ -56,6 +59,7 @@ function App() {
           <Route path="/curriculum/:topic" element={<ProtectedRoute><CurriculumDetail /></ProtectedRoute>} />
           <Route path="/curriculum/:topic/lesson/:lessonId" element={<ProtectedRoute><LessonDetail /></ProtectedRoute>} />
           <Route path="/practice" element={<ProtectedRoute><PracticeMaster /></ProtectedRoute>} />
+          <Route path="/practice-sheet/:sheetId" element={<ProtectedRoute><PracticeSheet /></ProtectedRoute>} />
           <Route path="/challenges" element={<ProtectedRoute><Challenges /></ProtectedRoute>} />
           <Route path="/challenges/track/:topic" element={<ProtectedRoute><Challenges /></ProtectedRoute>} />
           <Route path="/challenges/:id" element={<ProtectedRoute><ChallengeIDE /></ProtectedRoute>} />
@@ -73,7 +77,7 @@ function App() {
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
           <Route path="/submissions" element={<ProtectedRoute><Submissions /></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><AdminLock allowedEmails={[]}><div>Admin</div></AdminLock></ProtectedRoute>} />
-          <Route path="/admin/master" element={<ProtectedRoute><MasterAdmin /></ProtectedRoute>} />
+          <Route path="/admin/master" element={<ProtectedRoute><AdminLock allowedEmails={['admin@glintspark.in']}><MasterAdmin /></AdminLock></ProtectedRoute>} />
           <Route path="/admin/college" element={<ProtectedRoute><CollegeAdmin /></ProtectedRoute>} />
           <Route path="/quizzes" element={<ProtectedRoute><Quizzes /></ProtectedRoute>} />
           <Route path="/quizzes/:id" element={<ProtectedRoute><QuizPlayer /></ProtectedRoute>} />
@@ -91,7 +95,9 @@ function App() {
         </Route>
         {/* Auth Route outside layout for a full-screen dedicated experience */}
         <Route path="/auth" element={<Auth />} />
+        <Route path="/recovery" element={<AccountRecovery />} />
         <Route path="/master" element={<MasterLogin />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         {/* Landing Page Route outside layout so it can have its own header */}
         <Route path="/contests/:id/landing" element={<ContestLandingPage />} />
       </Routes>

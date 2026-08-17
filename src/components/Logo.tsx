@@ -1,4 +1,5 @@
 import React from 'react';
+import logoImg from '../assets/glintspark-logo.png';
 
 interface LogoProps {
   className?: string;
@@ -7,18 +8,14 @@ interface LogoProps {
   variant?: 'dark' | 'light';
 }
 
-export const Logo: React.FC<LogoProps> = ({ className = "", size = 36, showText = true, variant = 'dark' }) => {
-  const textColor = variant === 'light' ? '#ffffff' : '#0f172a';
-  const textClass = variant === 'light' ? 'text-white' : 'text-slate-900';
-
+export const Logo: React.FC<LogoProps> = ({ className = "", size = 36, variant = 'dark' }) => {
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
-      <img src="/favicon.png" alt="Glintspark Logo" style={{ width: size, height: size, objectFit: 'contain' }} className="rounded-full shadow-sm" />
-      {showText && (
-        <span className={`font-extrabold tracking-tight ${textClass}`} style={{ fontSize: size * 0.7, letterSpacing: '-0.03em' }}>
-          Glintspark
-        </span>
-      )}
+    <div className={`flex items-center ${className}`}>
+      <img 
+        src={logoImg} 
+        alt="Glintspark Logo" 
+        style={{ height: size * 1.5, objectFit: 'contain' }} 
+      />
     </div>
   );
 };

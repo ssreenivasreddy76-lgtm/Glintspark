@@ -77,7 +77,7 @@ export function AdminLearn() {
     const fetchCurriculum = async () => {
       setIsLoading(true);
       try {
-        const modulesFromDB = await firebaseDB.getCurriculum(selectedTrack);
+        const modulesFromDB = await supabaseDB.getCurriculum(selectedTrack);
         if (modulesFromDB && modulesFromDB.length > 0) {
           setModules(modulesFromDB);
         } else {
@@ -102,12 +102,16 @@ export function AdminLearn() {
       const updatedActiveModule = updatedModules.find(m => m.id === activeModule.id);
       if (updatedActiveModule) setActiveModule(updatedActiveModule);
     }
-    
     setIsSaving(true);
-    setStatusMessage({ type: 'success', text: 'Saving...' });
-
+    setStatusMessage(null);
     try {
-      await firebaseDB.saveCurriculum(selectedTrack, updatedModules);
+      const success = await supabaseDB.saveCurriculum(selectedTrack, updatedModules);
+      if (!success) throw new Error("Failed to save");
+      setModules(updatedModules);
+      if (activeModule) {
+        const updatedActiveModule = updatedModules.find(m => m.id === activeModule.id);
+        if (updatedActiveModule) setActiveModule(updatedActiveModule);
+      }
       setStatusMessage({ type: 'success', text: 'Saved successfully!' });
     } catch (e) {
       console.error('Error saving curriculum', e);

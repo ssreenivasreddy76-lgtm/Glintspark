@@ -233,8 +233,8 @@ export default function About() {
             At GlintSpark, we are committed to helping every learner achieve their career aspirations through quality education, hands-on practice, and continuous mentorship. We believe every student deserves the opportunity to succeed, and we strive to make technology a bridge between learning and career success.
           </p>
           <Link 
-            to="/auth" 
-            state={{ role: 'developer' }}
+            to="/auth?mode=signup" 
+            state={{ role: 'developer', mode: 'signup' }}
             className="inline-flex items-center gap-2 px-8 py-4 bg-white text-indigo-700 font-black text-sm uppercase tracking-wider rounded-xl hover:bg-slate-50 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 active:translate-y-0"
           >
             Start Your Journey <ChevronRight size={18} />

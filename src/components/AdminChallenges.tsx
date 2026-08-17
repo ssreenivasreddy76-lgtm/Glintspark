@@ -70,7 +70,12 @@ export function AdminChallenges() {
         title: title,
         category: getValue(['topic', 'category']) || 'Basic',
         difficulty: (getValue(['difficulty', 'level']) || 'Medium') as any,
-        points: parseInt(getValue(['points', 'score']) || '10'),
+        points: (() => {
+          const raw = getValue(['points', 'score']);
+          if (raw) return parseInt(raw);
+          const diff = (getValue(['difficulty', 'level']) || 'Medium').toLowerCase().trim();
+          return diff === 'easy' ? 2 : diff === 'hard' ? 10 : 5;
+        })(),
         successRate: '0%',
         track: 'custom',
         description: getValue(['problem statement', 'description', 'problem description']) || '',

@@ -13,7 +13,7 @@ export default function Challenges() {
   const { topic } = useParams<{ topic?: string }>();
   const [solvedSubmissions, setSolvedSubmissions] = useState<{challengeId: string, language: string}[]>([]);
   const [realRank, setRealRank] = useState<number | null>(null);
-  const [challengeStats, setChallengeStats] = useState<Record<string, string>>({});
+  const [challengeStats, setChallengeStats] = useState<Record<string, { accuracy: string, total: number }>>({});
   const { user } = useAuth();
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>([]);
   const { tracks: practiceTracks, challenges: allChallenges } = useChallenges();
@@ -419,7 +419,11 @@ export default function Challenges() {
                             <span className={prob.difficulty === 'Easy' ? 'text-[#1ba94c]' : prob.difficulty === 'Medium' ? 'text-amber-500' : 'text-rose-600'}>
                               {prob.difficulty}
                             </span>
-                            , {prob.category}, Max Score: {prob.points}, Success Rate: {challengeStats[prob.id] || '0%'}
+                            , {prob.category}, Max Score: {prob.points}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 mt-2">
+                             <Users size={12} className="text-slate-300" />
+                             {challengeStats[prob.id]?.total || 0} Submissions • {challengeStats[prob.id]?.accuracy || '0%'} Accuracy
                           </div>
                        </div>
 

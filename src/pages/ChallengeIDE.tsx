@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { executeWithWaterfall, type ExecutionResult } from '../services/executionService';
-import { Play, Check, ChevronLeft, ChevronRight, Settings, Layout, Maximize2, Terminal, Code2, AlertTriangle, RotateCcw, ChevronDown, Lock, Trophy, Clock, CheckCircle2, MessageSquare, Sparkles, Upload, Loader2 } from 'lucide-react';
+import { Play, Check, ChevronLeft, ChevronRight, Settings, Layout, Maximize2, Terminal, Code2, AlertTriangle, RotateCcw, ChevronDown, Lock, Trophy, Clock, CheckCircle2, MessageSquare, Sparkles, Upload, Loader2, X } from 'lucide-react';
 import MonacoEditor, { loader } from '@monaco-editor/react';
 
 // Use cloudflare CDN for faster loading of Monaco resources
@@ -88,17 +88,52 @@ export default function ChallengeIDE() {
         parsedConstraints = fromCtx.constraints;
       }
 
+      let fullTestCases: { input: string; expected: string }[] = [];
+
+      if (fromCtx.testCases && Array.isArray(fromCtx.testCases) && fromCtx.testCases.length > 0) {
+        fullTestCases = fromCtx.testCases.map((tc: any) => ({ input: tc.input || '', expected: tc.expected || tc.output || '' }));
+      } else if (fromCtx.hiddenTestCasesList && Array.isArray(fromCtx.hiddenTestCasesList) && fromCtx.hiddenTestCasesList.length > 0) {
+        fullTestCases = fromCtx.hiddenTestCasesList.map((tc: any) => ({ input: tc.input || '', expected: tc.output || tc.expected || '' }));
+      } else if (fromCtx.hiddenTestCases && typeof fromCtx.hiddenTestCases === 'string') {
+        try {
+          const parsed = JSON.parse(fromCtx.hiddenTestCases);
+          if (Array.isArray(parsed)) {
+            fullTestCases = parsed.map((tc: any) => ({ input: tc.input || '', expected: tc.output || tc.expected || '' }));
+          }
+        } catch (e) {
+          console.error("Failed to parse legacy hiddenTestCases format", e);
+        }
+      }
+
+      // If we still have no test cases from the DB, fallback to just the examples
+      if (fullTestCases.length === 0) {
+        fullTestCases = examples.map(e => ({ input: e.input, expected: e.output }));
+      }
+
       return {
+        ...fromCtx,
         title: fromCtx.title,
         difficulty: fromCtx.difficulty || 'Easy',
-        points: fromCtx.points || 10,
+        points: (() => {
+          const diff = (fromCtx.difficulty || 'Easy').toLowerCase().trim();
+          if (diff === 'easy') return 2;
+          if (diff === 'medium') return 5;
+          if (diff === 'hard') return 10;
+          return fromCtx.points || 5;
+        })(),
         description: fromCtx.description || '',
         inputFormat: fromCtx.inputFormat,
         outputFormat: fromCtx.outputFormat,
         examples: examples,
         constraints: parsedConstraints,
-        testCases: examples.map(e => ({ input: e.input, expected: e.output })), // Temporary until execution engine is built
+        testCases: fullTestCases,
         track: fromCtx.track,
+        sampleInput1: fromCtx.sampleInput1,
+        sampleOutput1: fromCtx.sampleOutput1,
+        explanation1: fromCtx.explanation1,
+        sampleInput2: fromCtx.sampleInput2,
+        sampleOutput2: fromCtx.sampleOutput2,
+        explanation2: fromCtx.explanation2,
       };
     }
     
@@ -163,6 +198,7 @@ export default function ChallengeIDE() {
   const [isCustomInput, setIsCustomInput] = useState(false);
   const [customInput, setCustomInput] = useState(problem.testCases?.[0]?.input || '');
   const [hasRun, setHasRun] = useState(false);
+  const [showOutputOverlay, setShowOutputOverlay] = useState(false);
 
   // Tab Data State
   const [submissions, setSubmissions] = useState<any[]>([]);
@@ -187,10 +223,15 @@ export default function ChallengeIDE() {
   useEffect(() => {
     if (user) {
       firebaseDB.getUserProgress(user._id).then(progress => {
-        if (progress) setUserProgress(progress);
+        if (progress) {
+          setUserProgress(progress);
+          if (progress.solved && progress.solved.includes(id || 'solve-me-first')) {
+            setHasSolved(true);
+          }
+        }
       });
     }
-  }, [user]);
+  }, [user, id]);
 
   // Check if locked on load
   useEffect(() => {
@@ -492,6 +533,7 @@ export default function ChallengeIDE() {
 
   const [isRunning, setIsRunning]   = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionProgress, setSubmissionProgress] = useState<{ current: number; total: number; passed: number; failed: number }>({ current: 0, total: 0, passed: 0, failed: 0 });
   const [activeTestCase, setActiveTestCase] = useState<number>(0);
   const [output, setOutput] = useState<{ 
     type: 'run' | 'submit' | 'error'; 
@@ -616,28 +658,57 @@ export default function ChallengeIDE() {
         throw new Error('No test cases defined for this problem.');
       }
 
-      const executionPromises = problem.testCases.map(async (tc, i) => {
-        const result = await runCode(lang.id, code, tc.input);
-        const actual = (result.stdout || '').trim();
-        const expected = (tc.expected || '').trim();
-        const passed = actual === expected || actual === '__MOCK_PASS__';
-        
-        return {
-          name: `Test Case ${i}`,
-          input: tc.input,
-          expected: expected,
-          actual: actual,
-          passed: passed,
-          stderr: result.stderr
-        };
-      });
+      const totalCases = problem.testCases.length;
+      let completedCases = 0;
+      let passedCases = 0;
+      let failedCases = 0;
+      setSubmissionProgress({ current: 0, total: totalCases, passed: 0, failed: 0 });
 
-      const testCaseResults = await Promise.all(executionPromises);
-      const passedCount = testCaseResults.filter(tc => tc.passed).length;
+      // Run with concurrency pool of 10 to avoid server connection drops / rate limits
+      const concurrency = 10;
+      const testCaseResults: any[] = new Array(totalCases);
+      let currentIndex = 0;
+
+      const worker = async () => {
+        while (currentIndex < totalCases) {
+          const i = currentIndex++;
+          const tc = problem.testCases[i];
+          const result = await runCode(lang.id, code, tc.input);
+          const actual = (result.stdout || '').trim();
+          const expected = (tc.expected || '').trim();
+          const passed = actual === expected || actual === '__MOCK_PASS__';
+
+          completedCases++;
+          if (passed) passedCases++;
+          else failedCases++;
+
+          setSubmissionProgress({
+            current: completedCases,
+            total: totalCases,
+            passed: passedCases,
+            failed: failedCases
+          });
+
+          testCaseResults[i] = {
+            name: `Test Case ${i}`,
+            input: tc.input,
+            expected: expected,
+            actual: actual,
+            passed: passed,
+            stderr: result.stderr
+          };
+        }
+      };
+
+      const workers = Array.from({ length: Math.min(concurrency, totalCases) }, () => worker());
+      await Promise.all(workers);
+
+      const passedCount = testCaseResults.filter(tc => tc?.passed).length;
 
       const allPassed = passedCount === problem.testCases.length;
+      const alreadyPassedBefore = submissions.some(s => s.status === 'PASS');
 
-      if (allPassed) {
+      if (allPassed && !alreadyPassedBefore) {
         confetti({
           particleCount: 150,
           spread: 80,
@@ -673,19 +744,22 @@ export default function ChallengeIDE() {
       }
 
       if (allPassed) {
+        setHasSolved(true);
         if (user) {
           try {
             const progress = await firebaseDB.getUserProgress(user._id);
-            const solved = progress.solved || [];
+            const solved = progress?.solved || [];
             const challengeIdToSave = id || 'solve-me-first';
             if (!solved.includes(challengeIdToSave)) {
               solved.push(challengeIdToSave);
               await firebaseDB.updateUserProgress(user._id, { solved });
+              setUserProgress((prev: any) => ({ ...prev, solved }));
             }
           } catch (e) {
             console.error("Failed to update user solved progress:", e);
           }
         }
+        setShowOutputOverlay(true);
       }
 
       setOutput({ type: 'submit', passed: passedCount, total: problem.testCases.length, testCases: testCaseResults });
@@ -736,7 +810,7 @@ export default function ChallengeIDE() {
       <div ref={containerRef} className="flex-1 flex overflow-hidden bg-[#f3f7f7]">
         
         {/* Left Pane (Tabs + Description) */}
-        <div style={{ width: `${leftWidth}%` }} className="flex flex-col bg-white z-10 shrink-0 border-r border-slate-300 shadow-sm">
+        <div style={{ width: `${leftWidth}%` }} className="flex flex-col bg-white z-10 shrink-0 border-r border-slate-300 shadow-sm relative overflow-hidden">
           
           {/* Tabs */}
           <div className="flex bg-[#f3f7f7] border-b border-slate-200 shrink-0 overflow-x-auto scrollbar-hide gap-1 p-2">
@@ -749,7 +823,7 @@ export default function ChallengeIDE() {
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2.5 text-[12px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap rounded-lg ${
+                className={`px-4 py-2.5 text-[13px] font-bold transition-colors whitespace-nowrap rounded-lg ${
                   activeTab === tab ? 'bg-brand-primary text-white shadow-md' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200'
                 }`}
               >
@@ -764,15 +838,26 @@ export default function ChallengeIDE() {
 
           {/* Left Content */}
           <div className="flex-1 overflow-y-auto p-8 bg-white">
-            {activeTab === 'Problem' && (
-              <div className="prose prose-slate prose-sm max-w-none">
-                <div className="mb-6">
-                  <h2 className="text-[24px] font-medium text-slate-900 mb-2 leading-tight">{problem.title}</h2>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[12px] font-bold text-emerald-600 px-2 py-0.5 rounded bg-emerald-50">{problem.difficulty}</span>
-                    <span className="text-[12px] font-semibold text-slate-500">{problem.points} Points</span>
+            {activeTab === 'Problem' && (() => {
+              const isSolved = hasSolved || (userProgress?.solved || []).includes(id || 'solve-me-first') || submissions.some(s => s.status === 'PASS');
+              return (
+                <div className="prose prose-slate prose-sm max-w-none">
+                  <div className="mb-6 flex items-start justify-between">
+                    <div>
+                      <h2 className="text-[24px] font-medium text-slate-900 mb-2 leading-tight">{problem.title}</h2>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[12px] font-bold text-emerald-600 px-2 py-0.5 rounded bg-emerald-50">{problem.difficulty}</span>
+                        <span className="text-[12px] font-semibold text-slate-500">{problem.points} Points</span>
+                      </div>
+                    </div>
+
+                    {isSolved && (
+                      <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[13px] font-bold shadow-sm">
+                        <CheckCircle2 size={16} className="text-emerald-600" />
+                        <span>Solved</span>
+                      </div>
+                    )}
                   </div>
-                </div>
 
                 <div className="space-y-6">
                   {problem.description && (
@@ -782,34 +867,53 @@ export default function ChallengeIDE() {
                   )}
 
                   {problem.inputFormat && (
-                    <div className="bg-[#f8fafc] border border-slate-200 rounded-lg p-5">
-                      <h3 className="text-[15px] font-black text-slate-800 mb-3 uppercase tracking-wider">Input Format</h3>
-                      <div className="bg-white p-4 rounded-md text-[15px] font-medium font-mono text-slate-800 border border-slate-200 whitespace-pre-wrap">{problem.inputFormat}</div>
+                    <div className="mb-6">
+                      <h3 className="text-[15px] font-black text-slate-800 mb-2 uppercase tracking-wider">Input Format</h3>
+                      <div className="text-[15px] font-medium text-[#2d3748] leading-[1.7] whitespace-pre-wrap">{problem.inputFormat}</div>
                     </div>
                   )}
 
                   {problem.outputFormat && (
-                    <div className="bg-[#f8fafc] border border-slate-200 rounded-lg p-5">
-                      <h3 className="text-[15px] font-black text-slate-800 mb-3 uppercase tracking-wider">Output Format</h3>
-                      <div className="bg-white p-4 rounded-md text-[15px] font-medium font-mono text-slate-800 border border-slate-200 whitespace-pre-wrap">{problem.outputFormat}</div>
+                    <div className="mb-6">
+                      <h3 className="text-[15px] font-black text-slate-800 mb-2 uppercase tracking-wider">Output Format</h3>
+                      <div className="text-[15px] font-medium text-[#2d3748] leading-[1.7] whitespace-pre-wrap">{problem.outputFormat}</div>
                     </div>
                   )}
 
                   {problem.constraints && problem.constraints.length > 0 && (
-                    <div className="bg-[#f8fafc] border border-slate-200 rounded-lg p-5">
-                      <h3 className="text-[15px] font-black text-slate-800 mb-3 uppercase tracking-wider">Constraints</h3>
-                      <div className="bg-white p-4 rounded-md border border-slate-200 flex flex-col gap-2">
+                    <div className="mb-6">
+                      <h3 className="text-[15px] font-black text-slate-800 mb-2 uppercase tracking-wider">Constraints</h3>
+                      <ul className="list-disc pl-5 space-y-1.5">
                         {problem.constraints.map((c: string, i: number) => (
-                          <span key={i} className="text-[15px] font-medium font-mono text-slate-800">{c}</span>
+                          <li key={i} className="text-[15px] font-medium font-mono text-[#2d3748]">{c}</li>
                         ))}
-                      </div>
+                      </ul>
                     </div>
                   )}
+                  
+                  {(() => {
+                    const displayExamples = [];
+                    if (problem.examples && problem.examples.length > 0) {
+                      displayExamples.push(...problem.examples);
+                    } else if (problem.sampleInput1 !== undefined && problem.sampleOutput1 !== undefined && (problem.sampleInput1 !== '' || problem.sampleOutput1 !== '')) {
+                      displayExamples.push({ input: problem.sampleInput1, output: problem.sampleOutput1, explanation: problem.explanation1 });
+                      if (problem.sampleInput2 !== undefined && problem.sampleOutput2 !== undefined && (problem.sampleInput2 !== '' || problem.sampleOutput2 !== '')) {
+                        displayExamples.push({ input: problem.sampleInput2, output: problem.sampleOutput2, explanation: problem.explanation2 });
+                      }
+                    } else if (problem.testCases && problem.testCases.length > 0) {
+                      // Fallback to the first 1-2 test cases if no explicit samples are provided
+                      displayExamples.push({ input: problem.testCases[0].input, output: problem.testCases[0].output || problem.testCases[0].expected, explanation: problem.explanation1 || '' });
+                      if (problem.testCases.length > 1) {
+                        displayExamples.push({ input: problem.testCases[1].input, output: problem.testCases[1].output || problem.testCases[1].expected, explanation: problem.explanation2 || '' });
+                      }
+                    }
 
-                  {problem.examples && problem.examples.length > 0 && (
-                    <>
-                      {problem.examples.map((ex, idx) => (
-                        <div key={idx} className="bg-[#f8fafc] border border-slate-200 rounded-lg p-5">
+                    if (displayExamples.length === 0) return null;
+
+                    return (
+                      <>
+                        {displayExamples.map((ex, idx) => (
+                          <div key={idx} className="bg-[#f8fafc] border border-slate-200 rounded-lg p-5">
                           <h3 className="text-[15px] font-black text-slate-800 mb-4 uppercase tracking-wider">Sample Test Case {idx + 1}</h3>
                           
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -839,10 +943,12 @@ export default function ChallengeIDE() {
                         </div>
                       ))}
                     </>
-                  )}
+                  );
+                })()}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
             
             {activeTab === 'Submissions' && (
               <div className="h-full">
@@ -1045,6 +1151,7 @@ export default function ChallengeIDE() {
                 </div>
               </div>
             )}
+
           </div>
         </div>
 
@@ -1055,7 +1162,7 @@ export default function ChallengeIDE() {
         />
 
         {/* Right Pane (White Theme Editor & Console) */}
-        <div className="flex-1 flex flex-col bg-white min-w-0 overflow-y-scroll">
+        <div className="flex-1 flex flex-col bg-white min-w-0 overflow-y-auto">
           
           {/* Top Editor Toolbar */}
           <div className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 sticky top-0 z-20">
@@ -1165,7 +1272,7 @@ export default function ChallengeIDE() {
           </div>
 
           {/* Code Editor (Monaco) */}
-          <div className="flex-1 min-h-[400px] shrink-0 relative">
+          <div className="flex-1 min-h-[200px] relative">
             <MonacoEditor
               height="100%"
               language={lang.monaco}
@@ -1195,6 +1302,9 @@ export default function ChallengeIDE() {
                 cursorSmoothCaretAnimation: 'on',
                 formatOnPaste: true,
                 mouseWheelZoom: true,
+                scrollbar: {
+                  alwaysConsumeMouseWheel: false,
+                },
               }}
 
             />
@@ -1203,9 +1313,7 @@ export default function ChallengeIDE() {
           {/* Action Bar */}
           <div className="bg-white border-t border-slate-200 flex items-center justify-between px-6 py-4 shrink-0">
             <div className="flex items-center gap-6">
-              <button className="flex items-center gap-2 text-slate-600 hover:text-slate-900 text-[13px] font-semibold border border-slate-300 px-4 py-2 rounded transition">
-                <Upload size={14} /> Upload Code as File
-              </button>
+
               <label className="flex items-center gap-2 cursor-pointer group">
                 <input 
                   type="checkbox" 
@@ -1225,7 +1333,7 @@ export default function ChallengeIDE() {
                 {isRunning ? 'Running...' : 'Run Code'}
               </button>
               
-              {output?.type === 'submit' && output.passed === output.total ? (
+              {!isSubmitting && output?.type === 'submit' && output.passed === output.total ? (
                 <button 
                   onClick={handleNextChallenge}
                   className="px-6 py-2 bg-[#0e141e] hover:bg-black text-white text-[14px] font-bold rounded transition flex items-center gap-1 shadow-sm"
@@ -1246,7 +1354,7 @@ export default function ChallengeIDE() {
 
           {/* Dynamic Bottom Console (Run and Submit Code) */}
           {(isCustomInput || output || isSubmitting) && (
-            <div ref={consoleRef} className="px-6 pb-12">
+            <div ref={consoleRef} className="px-6 pb-12 bg-[#f3f7f7] overflow-y-auto max-h-[40vh] shrink-0 border-t border-slate-200 pt-6">
               
               {isCustomInput && (
                 <div className="mb-6">
@@ -1260,7 +1368,7 @@ export default function ChallengeIDE() {
                 </div>
               )}
 
-              {hasRun && output && output.type !== 'submit' && (
+              {hasRun && output && (output.type !== 'submit' || output.passed !== output.total) && (
                 <div className="bg-white border border-slate-200 rounded p-6 shadow-sm mb-6">
                   {output.testCases ? (
                     <div>
@@ -1385,16 +1493,59 @@ export default function ChallengeIDE() {
               )}
 
               {isSubmitting && (
-                <div className="bg-white border border-slate-200 rounded p-6 shadow-sm flex flex-col items-center justify-center py-12">
-                  <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4" />
-                  <div className="text-[15px] font-bold text-slate-700">Evaluating your code against hidden test cases...</div>
+                <div className="bg-white border border-slate-200 rounded-xl p-8 shadow-sm flex flex-col items-center justify-center py-10">
+                  <div className="relative mb-5 flex items-center justify-center">
+                    <div className="w-16 h-16 border-4 border-slate-100 border-t-emerald-500 rounded-full animate-spin" />
+                    <div className="absolute inset-0 flex items-center justify-center font-mono font-bold text-slate-800 text-[13px]">
+                      {submissionProgress.total > 0
+                        ? `${Math.round((submissionProgress.current / submissionProgress.total) * 100)}%`
+                        : '0%'}
+                    </div>
+                  </div>
+                  
+                  <div className="text-[18px] font-bold text-slate-800 mb-1 flex items-center gap-2">
+                    <span>Evaluating Test Cases:</span>
+                    <span className="font-mono text-emerald-600 bg-emerald-50 px-3 py-0.5 rounded-lg border border-emerald-200 text-[19px]">
+                      {submissionProgress.current} / {submissionProgress.total || problem.testCases?.length || 0}
+                    </span>
+                  </div>
+
+                  <p className="text-[13px] font-medium text-slate-500 mb-5">
+                    Testing your code against hidden validation test suites in real-time...
+                  </p>
+
+                  {/* Progress Bar */}
+                  <div className="w-full max-w-md h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200 shadow-inner">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 transition-all duration-100 ease-out rounded-full"
+                      style={{
+                        width: `${submissionProgress.total > 0 ? (submissionProgress.current / submissionProgress.total) * 100 : 3}%`
+                      }}
+                    />
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between w-full max-w-md text-[13px] font-semibold font-mono bg-slate-50 border border-slate-200 rounded-lg px-4 py-2">
+                    <div className="flex items-center gap-1.5 text-emerald-700">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      <span>Passed: <strong>{submissionProgress.passed}</strong></span>
+                    </div>
+                    {submissionProgress.failed > 0 && (
+                      <div className="flex items-center gap-1.5 text-rose-600">
+                        <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                        <span>Failed: <strong>{submissionProgress.failed}</strong></span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5 text-slate-500">
+                      <span>Remaining: <strong>{Math.max(0, (submissionProgress.total || 0) - submissionProgress.current)}</strong></span>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {!isSubmitting && output?.type === 'submit' && output.testCases && (
                 <div className="bg-white border border-slate-200 rounded shadow-sm overflow-hidden mb-6">
                   {/* Points Box Header */}
-                  {output.passed === output.total && isFromContest && (
+                  {output.passed === output.total && isFromContest && submissions.filter(s => s.status === 'PASS').length === 1 && (
                     <div className="p-6 border-b border-slate-200 flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <div className="w-16 h-16 bg-slate-100 border border-slate-200 rounded-full flex items-center justify-center shadow-sm">
@@ -1418,81 +1569,131 @@ export default function ChallengeIDE() {
                     </div>
                   )}
 
-                  {/* Banner */}
-                  <div className={`relative p-8 flex items-center justify-between overflow-hidden ${output.passed === output.total ? 'bg-gradient-to-r from-[#4f46e5] to-[#7c3aed]' : 'bg-[#e74c3c]'}`}>
-                    {/* Background Accents */}
-                    {output.passed === output.total && (
-                      <>
-                        <div className="absolute right-40 top-[-30px] opacity-10 pointer-events-none transform rotate-12 transition-transform duration-1000 hover:rotate-0">
-                          <Trophy size={160} className="text-white" />
-                        </div>
-                        <div className="absolute left-[30%] bottom-[-20px] opacity-20 pointer-events-none">
-                          <Sparkles size={100} className="text-white" />
-                        </div>
-                        <div className="absolute inset-0 bg-white pointer-events-none"></div>
-                      </>
-                    )}
-                    
-                    <div className="relative z-10">
-                      <h2 className="text-white text-[28px] font-bold mb-2 flex items-center gap-2">
-                        {output.passed === output.total ? (
-                          <>Congratulations <Sparkles size={24} className="text-yellow-300 animate-pulse" /></>
-                        ) : 'Wrong Answer'}
-                      </h2>
-                      <p className="text-white/90 text-[15px]">
-                        {output.passed === output.total 
-                          ? 'You solved this challenge. Would you like to challenge your friends?' 
-                          : 'Your code did not pass all test cases. Keep trying!'}
-                      </p>
-                      {output.passed === output.total && (
-                        <div className="flex items-center gap-3 mt-5">
-                          <a 
-                            href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`I just solved the "${problem.title}" challenge on Glintspark! Can you beat my score? \n\nTry it here: https://glintspark.in/challenges/${problem.id}`)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 bg-[#25D366] hover:bg-[#1DA851] text-white px-5 py-2 rounded-[4px] font-bold text-[13px] shadow-sm transition active:scale-95"
-                          >
-                            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.711.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.298.144.347.491 1.2.534 1.287.043.087.072.188.014.304-.058.116-.087.188-.173.289l-.26.304c-.087.086-.177.18-.076.354.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86s.274.072.376-.043c.101-.116.433-.506.549-.68.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.202c.045.072.045.419-.1.824zm-3.423-14.416c-6.627 0-12 5.373-12 12s5.373 12 12 12 12-5.373 12-12-5.373-12-12-12zm.029 18.88c-1.161 0-2.305-.292-3.318-.844l-3.677.964.984-3.595c-.607-1.052-.927-2.246-.926-3.468.001-3.825 3.113-6.937 6.937-6.937 1.856.001 3.598.723 4.907 2.034 1.31 1.311 2.031 3.054 2.03 4.908-.001 3.825-3.113 6.938-6.937 6.938z"/></svg>
-                            WhatsApp
-                          </a>
-                          <a 
-                            href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`https://glintspark.in/challenges/${problem.id}`)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 bg-[#0077b5] hover:bg-[#005582] text-white px-5 py-2 rounded-[4px] font-bold text-[13px] shadow-sm transition active:scale-95"
-                          >
-                            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
-                            LinkedIn
-                          </a>
-                        </div>
+                  {/* Minimal Banner */}
+                  <div className={`p-5 flex items-center justify-between ${output.passed === output.total ? 'bg-[#f0fdf4] border-b border-emerald-100' : 'bg-rose-50 border-b border-rose-100'}`}>
+                    <h2 className={`text-[18px] font-bold flex items-center gap-2 ${output.passed === output.total ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {output.passed === output.total ? (
+                        <>Accepted <Check size={20} strokeWidth={3} /></>
+                      ) : (
+                        <>Wrong Answer <AlertTriangle size={20} strokeWidth={3} /></>
                       )}
-                    </div>
+                    </h2>
                     
-                    <div className="relative z-10">
-                      {output.passed === output.total && (
-                        <button 
-                          onClick={handleNextChallenge}
-                          className="px-8 py-3 bg-white text-[#4f46e5] text-[15px] font-black rounded shadow-xl hover:bg-slate-50 transition transform hover:-translate-y-1 hover:shadow-2xl"
-                        >
-                          {isFromContest ? 'Next Challenge' : 'Next Practice'}
-                        </button>
-                      )}
-                    </div>
+                    {!output.passed || output.passed !== output.total ? (
+                      <div className="text-[13px] font-bold text-rose-600 bg-white px-3 py-1 rounded border border-rose-200">
+                        Passed {output.passed} / {output.total} test cases
+                      </div>
+                    ) : null}
                   </div>
 
-                  {/* Test Cases List */}
-                  <div className="p-6 space-y-4">
-                    {output.testCases.map((tc, idx) => (
-                      <div key={idx} className="flex items-center gap-3">
-                        <div className={`flex items-center justify-center w-6 h-6 rounded-full border ${tc.passed ? 'text-emerald-500 bg-white border-emerald-500' : 'text-rose-500 bg-white border-rose-500'}`}>
-                          {tc.passed ? <Check size={14} strokeWidth={3} /> : <Lock size={14} strokeWidth={3} />}
+                  {output.passed === output.total && (
+                    <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-12 bg-white">
+                      {/* Test Cases Passed */}
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Test Cases Passed</div>
+                        <div className="text-[20px] font-black text-slate-800">
+                          {output?.passed} <span className="text-[14px] text-slate-400 font-medium">/ {output?.total}</span>
                         </div>
-                        <span className={`font-bold text-[15px] ${tc.passed ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          Test case {idx}
-                        </span>
                       </div>
-                    ))}
-                  </div>
+                      
+                      {/* Attempts */}
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Attempts (Correct/Total)</div>
+                        <div className="text-[20px] font-black text-slate-800">
+                          {submissions.filter(s => s.status === 'PASS').length} <span className="text-[14px] text-slate-400 font-medium">/ {submissions.length}</span>
+                        </div>
+                      </div>
+
+                      {/* Accuracy */}
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Accuracy</div>
+                        <div className="text-[20px] font-black text-slate-800">
+                          {submissions.length > 0 ? Math.round((submissions.filter(s => s.status === 'PASS').length / submissions.length) * 100) : 0}%
+                        </div>
+                      </div>
+                      
+                      {/* Time Taken */}
+                      <div>
+                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Time Taken</div>
+                        <div className="text-[20px] font-black text-slate-800">
+                          {output?.time ? output.time.toFixed(2) : '0.01'}s
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Test Cases Results */}
+                  {output.passed === output.total ? (
+                    <div className="p-10 text-center bg-white flex flex-col items-center justify-center">
+                      <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 mb-4 shadow-sm">
+                        <Check size={32} strokeWidth={3} />
+                      </div>
+                      <h3 className="text-[22px] font-bold text-slate-800 mb-1">
+                        All {output.total} Test Cases Passed!
+                      </h3>
+                      <p className="text-[14px] text-slate-500 max-w-md mb-6 font-medium">
+                        Excellent job! Your code successfully executed and satisfied all hidden and edge-case validation constraints.
+                      </p>
+                      <button
+                        onClick={handleNextChallenge}
+                        className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-[14px] rounded-lg shadow-sm transition flex items-center gap-2"
+                      >
+                        Next Practice <ChevronRight size={18} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-6 space-y-4">
+                      <div className="text-[14px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-4 py-2.5 rounded-lg flex items-center justify-between">
+                        <span>Failed on {output.testCases.filter(tc => !tc.passed).length} test case(s)</span>
+                        <span>Review your output vs expected output below</span>
+                      </div>
+                      {output.testCases.filter(tc => !tc.passed).map((tc, idx) => (
+                        <div key={idx} className="rounded-xl border border-rose-200 bg-white p-5 shadow-sm">
+                          <div className="flex items-center gap-3 mb-4 pb-3 border-b border-slate-100">
+                            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-rose-500 text-white shrink-0">
+                              <AlertTriangle size={14} strokeWidth={3} />
+                            </div>
+                            <span className="font-bold text-[16px] text-rose-700">
+                              {tc.name} Failed
+                            </span>
+                          </div>
+
+                          <div className="space-y-4">
+                            {tc.stderr && (
+                              <div>
+                                <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Runtime / Error Output</h4>
+                                <div className="bg-rose-50 border border-rose-200 p-3.5 rounded text-[13px] font-mono text-rose-700 whitespace-pre-wrap">
+                                  {tc.stderr}
+                                </div>
+                              </div>
+                            )}
+                            {tc.input && tc.input !== 'No Input' && (
+                              <div>
+                                <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Input</h4>
+                                <div className="bg-slate-50 border border-slate-200 p-3.5 rounded text-[13px] font-mono text-slate-700 whitespace-pre-wrap">
+                                  {tc.input}
+                                </div>
+                              </div>
+                            )}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Expected Output</h4>
+                                <div className="bg-emerald-50/50 border border-emerald-200 p-3.5 rounded text-[13px] font-mono text-emerald-800 whitespace-pre-wrap h-full">
+                                  {tc.expected}
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="text-[12px] font-bold text-slate-500 uppercase tracking-wider mb-2">Your Output</h4>
+                                <div className="bg-rose-50 border border-rose-200 p-3.5 rounded text-[13px] font-mono text-rose-800 whitespace-pre-wrap h-full font-bold">
+                                  {tc.actual || '(No output produced)'}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

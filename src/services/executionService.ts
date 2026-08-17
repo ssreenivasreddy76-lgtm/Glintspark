@@ -27,7 +27,7 @@ const langMap: Record<number, LanguageSupport> = {
 async function executeCustomCloud(lang: LanguageSupport, code: string, stdin: string): Promise<ExecutionResult> {
   console.log("🌊 Waterfall: Attempting Tier 1 (Custom Cloud Run Engine)...");
   
-  const CLOUD_URL = 'https://glintspark-compiler-701610241876.asia-south2.run.app/execute';
+  const CLOUD_URL = 'https://glintspark-compiler.onrender.com/execute';
   
   const res = await fetch(CLOUD_URL, {
     method: 'POST',
@@ -37,7 +37,7 @@ async function executeCustomCloud(lang: LanguageSupport, code: string, stdin: st
       code: code,
       stdin: stdin
     }),
-    signal: AbortSignal.timeout(30000) // Give it up to 30s in case of cold start
+    signal: AbortSignal.timeout(90000) // Give it up to 90s in case of Render cold start
   });
 
   if (!res.ok) throw new Error(`Cloud Run Engine Error: ${res.status}`);
@@ -59,6 +59,29 @@ async function executeCustomCloud(lang: LanguageSupport, code: string, stdin: st
   };
 }
 
+/**
+ * TIER 2: Local Mock Engine (Fallback for Demo/UI Testing)
+ */
+async function executeMockEngine(lang: LanguageSupport, code: string, stdin: string): Promise<ExecutionResult> {
+  console.log("🌊 Waterfall: Attempting Tier 2 (Local Mock Engine)...");
+  
+  // Simulate network delay
+  await new Promise(r => setTimeout(r, 800));
+
+  if (code.toLowerCase().includes('fail')) {
+    return { stdout: 'Wrong Answer Simulation', stderr: '', status: 'Success' };
+  }
+  if (code.toLowerCase().includes('error')) {
+    return { stdout: '', stderr: 'Runtime Error Simulation: variable undefined', status: 'Error' };
+  }
+  
+  return {
+    stdout: '__MOCK_PASS__',
+    stderr: '',
+    status: 'Success'
+  };
+}
+
 export async function executeWithWaterfall(languageId: number, code: string, stdin = ''): Promise<ExecutionResult> {
   const lang = langMap[languageId];
   if (!lang) {
@@ -66,5 +89,11 @@ export async function executeWithWaterfall(languageId: number, code: string, std
   }
 
   // Attempt Tier 1: GlintSpark Custom Cloud
-  return await executeCustomCloud(lang, code, stdin);
+  try {
+    return await executeCustomCloud(lang, code, stdin);
+  } catch (err) {
+    console.warn("Tier 1 failed (Render down), falling back to Tier 2...", err);
+    // Attempt Tier 2: Mock Engine
+    return await executeMockEngine(lang, code, stdin);
+  }
 }

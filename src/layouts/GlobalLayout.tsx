@@ -53,7 +53,7 @@ export default function GlobalLayout() {
           
           {/* Left: Logo + Desktop Menu */}
           <div className="flex items-center gap-10 h-full">
-            <Link to="/" className="flex items-center gap-2 group shrink-0">
+            <Link to={user && !isGuest ? (isCompanyUser ? "/company" : "/dashboard") : "/"} className="flex items-center gap-2 group shrink-0">
               <Logo size={28} variant="light" />
             </Link>
 
@@ -131,6 +131,11 @@ export default function GlobalLayout() {
 
                 {!isCompanyUser && (
                   <div className="flex items-center gap-1 h-full">
+                    {/* Streak Indicator */}
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 rounded-lg border border-slate-700/50 mr-4 cursor-pointer hover:bg-slate-700/80 transition-colors" title="Your current streak">
+                      <Sparkles size={16} className="text-orange-500" />
+                      <span className="text-sm font-bold text-white">{user?.streak || 0}</span>
+                    </div>
                     {/* Messages */}
                     <button className="p-2 text-slate-400 hover:text-white transition-all relative">
                       <MessageSquare size={20} />
@@ -181,7 +186,7 @@ export default function GlobalLayout() {
                           ) : (
                             <div className="mb-4 pb-3 border-b border-slate-800/80">
                               <p className="text-white font-bold text-sm truncate">Guest Session</p>
-                              <Link to="/auth" className="text-brand-primary hover:text-brand-light text-xs font-bold mt-1 inline-block">Create an account &rarr;</Link>
+                              <Link to="/auth?mode=signup" state={{ mode: 'signup' }} className="text-brand-primary hover:text-brand-light text-xs font-bold mt-1 inline-block">Create an account &rarr;</Link>
                             </div>
                           )}
                           
@@ -226,12 +231,14 @@ export default function GlobalLayout() {
                   </AnimatePresence>
                 </div>
               </>
+            ) : loading ? (
+              <div className="w-28 h-9 rounded-lg bg-slate-800/40 animate-pulse" />
             ) : (
               <div className="flex items-center gap-6 h-full">
-                <Link to="/auth" state={{ from: location.pathname + location.search + location.hash }} className="text-[15px] font-bold text-slate-300 hover:text-white transition-all tracking-wide">
+                <Link to="/auth?mode=login" state={{ from: location.pathname + location.search + location.hash, mode: 'login' }} className="text-[15px] font-bold text-slate-300 hover:text-white transition-all tracking-wide">
                   Login
                 </Link>
-                <Link to="/auth" state={{ from: location.pathname + location.search + location.hash }} className="px-8 py-2.5 bg-brand-primary text-white text-[15px] font-bold rounded-lg hover:bg-brand-dark transition-all shadow-lg shadow-brand-primary/20 active:scale-95">
+                <Link to="/auth?mode=signup" state={{ from: location.pathname + location.search + location.hash, mode: 'signup' }} className="px-8 py-2.5 bg-brand-primary text-white text-[15px] font-bold rounded-lg hover:bg-brand-dark transition-all shadow-lg shadow-brand-primary/20 active:scale-95">
                   Create Account
                 </Link>
               </div>

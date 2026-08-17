@@ -68,13 +68,135 @@ export const INITIAL_TRACKS: PracticeTrack[] = [
   { id: 'data-structures', name: 'Data Structures & Algos', initials: 'DS', desc: 'Design highly efficient queues, stacks, linked nodes, BST traversal, and graphs.', difficulty: 'Beginner to Advanced', icon: 'https://img.icons8.com/color/96/data-configuration.png' },
 ];
 
-export const INITIAL_CHALLENGES: Challenge[] = [];
+export const INITIAL_CHALLENGES: Challenge[] = [
+  {
+    id: "two-sum",
+    title: "Two Sum",
+    difficulty: "Easy",
+    track: "data-structures",
+    category: "Arrays & Strings",
+    description: "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.",
+    initialCode: "function twoSum(nums, target) {\n  \n}",
+    testCases: [],
+    companies: ["Google", "Amazon", "Apple", "Meta", "Microsoft"],
+    topics: ["Arrays", "Hash Table"]
+  },
+  {
+    id: "add-two-numbers",
+    title: "Add Two Numbers",
+    difficulty: "Medium",
+    track: "data-structures",
+    category: "Linked Lists",
+    description: "You are given two non-empty linked lists representing two non-negative integers.",
+    initialCode: "function addTwoNumbers(l1, l2) {\n  \n}",
+    testCases: [],
+    companies: ["Amazon", "Microsoft", "Bloomberg"],
+    topics: ["Linked Lists", "Math"]
+  },
+  {
+    id: "longest-substring",
+    title: "Longest Substring Without Repeating Characters",
+    difficulty: "Medium",
+    track: "data-structures",
+    category: "Arrays & Strings",
+    description: "Given a string s, find the length of the longest substring without repeating characters.",
+    initialCode: "function lengthOfLongestSubstring(s) {\n  \n}",
+    testCases: [],
+    companies: ["Amazon", "Bloomberg", "Spotify"],
+    topics: ["Strings", "Sliding Window"]
+  },
+  {
+    id: "median-of-two-sorted-arrays",
+    title: "Median of Two Sorted Arrays",
+    difficulty: "Hard",
+    track: "data-structures",
+    category: "Arrays & Strings",
+    description: "Given two sorted arrays nums1 and nums2 of size m and n respectively, return the median of the two sorted arrays.",
+    initialCode: "function findMedianSortedArrays(nums1, nums2) {\n  \n}",
+    testCases: [],
+    companies: ["Google", "Microsoft", "Apple", "Yahoo"],
+    topics: ["Arrays", "Binary Search", "Divide and Conquer"]
+  },
+  {
+    id: "longest-palindromic-substring",
+    title: "Longest Palindromic Substring",
+    difficulty: "Medium",
+    track: "data-structures",
+    category: "Arrays & Strings",
+    description: "Given a string s, return the longest palindromic substring in s.",
+    initialCode: "function longestPalindrome(s) {\n  \n}",
+    testCases: [],
+    companies: ["Amazon", "Microsoft"],
+    topics: ["Strings", "Dynamic Programming"]
+  },
+  {
+    id: "regular-expression-matching",
+    title: "Regular Expression Matching",
+    difficulty: "Hard",
+    track: "data-structures",
+    category: "Dynamic Programming",
+    description: "Given an input string s and a pattern p, implement regular expression matching with support for '.' and '*'.",
+    initialCode: "function isMatch(s, p) {\n  \n}",
+    testCases: [],
+    companies: ["Meta", "Google"],
+    topics: ["Strings", "Dynamic Programming", "Recursion"]
+  },
+  {
+    id: "container-with-most-water",
+    title: "Container With Most Water",
+    difficulty: "Medium",
+    track: "data-structures",
+    category: "Arrays & Strings",
+    description: "You are given an integer array height of length n.",
+    initialCode: "function maxArea(height) {\n  \n}",
+    testCases: [],
+    companies: ["Amazon", "Meta", "Adobe"],
+    topics: ["Arrays", "Two Pointers"]
+  },
+  {
+    id: "integer-to-roman",
+    title: "Integer to Roman",
+    difficulty: "Medium",
+    track: "data-structures",
+    category: "Math",
+    description: "Roman numerals are represented by seven different symbols.",
+    initialCode: "function intToRoman(num) {\n  \n}",
+    testCases: [],
+    companies: ["Amazon", "Microsoft", "Twitter"],
+    topics: ["Math", "Strings"]
+  },
+  {
+    id: "valid-parentheses",
+    title: "Valid Parentheses",
+    difficulty: "Easy",
+    track: "data-structures",
+    category: "Stacks & Queues",
+    description: "Given a string s containing just the characters '(', ')', '{', '}', '[' and ']', determine if the input string is valid.",
+    initialCode: "function isValid(s) {\n  \n}",
+    testCases: [],
+    companies: ["Meta", "Amazon", "Microsoft", "LinkedIn", "Spotify"],
+    topics: ["Strings", "Stacks"]
+  },
+  {
+    id: "merge-k-sorted-lists",
+    title: "Merge k Sorted Lists",
+    difficulty: "Hard",
+    track: "data-structures",
+    category: "Linked Lists",
+    description: "You are given an array of k linked-lists lists, each linked-list is sorted in ascending order.",
+    initialCode: "function mergeKLists(lists) {\n  \n}",
+    testCases: [],
+    companies: ["Meta", "Google", "Amazon", "Uber", "Apple"],
+    topics: ["Linked Lists", "Divide and Conquer", "Heap"]
+  }
+];
 
 interface ChallengesContextType {
   tracks: PracticeTrack[];
   challenges: Challenge[];
   getChallengesByTrack: (trackId: string) => Challenge[];
   addChallenge: (c: Challenge) => void;
+  addChallengesBulk: (challenges: Challenge[]) => Promise<void>;
   updateChallenge: (id: string, updates: Partial<Challenge>) => void;
   deleteChallenge: (id: string) => void;
   addTrack: (t: PracticeTrack) => void;
@@ -95,14 +217,15 @@ function loadStored(): { tracks: PracticeTrack[]; challenges: Challenge[] } | nu
 export const ChallengesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const stored = loadStored();
   const [tracks, setTracks] = useState<PracticeTrack[]>(() => {
-    const s = stored?.tracks || [];
+    const s = Array.isArray(stored?.tracks) ? stored.tracks : [];
     const merged = [...INITIAL_TRACKS];
     for (const t of s) {
       if (!merged.find(m => m.id === t.id)) merged.push(t);
     }
     return merged;
   });
-  const [challenges, setChallenges] = useState<Challenge[]>(stored?.challenges ?? INITIAL_CHALLENGES);
+  const initialChallenges = Array.isArray(stored?.challenges) ? stored.challenges : INITIAL_CHALLENGES;
+  const [challenges, setChallenges] = useState<Challenge[]>(initialChallenges);
 
   // Sync tracks from Supabase on mount
   useEffect(() => {
@@ -127,12 +250,8 @@ export const ChallengesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   useEffect(() => {
     const fetchChallenges = async () => {
       try {
-        console.log("Fetching challenges from Supabase on mount...");
         const dbChallenges = await supabaseDB.getProblems();
-        console.log(`Fetched ${dbChallenges?.length} problems. First problem hiddenTestCases:`, dbChallenges?.[0]?.hiddenTestCases?.substring(0, 50));
-        if (dbChallenges) {
-          setChallenges(dbChallenges);
-        }
+        setChallenges(dbChallenges || []);
       } catch (err) {
         console.error("Failed to load challenges from Supabase:", err);
       }
@@ -171,6 +290,15 @@ export const ChallengesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       await supabaseDB.createProblem(c);
     } catch (err) {
       console.error("Failed to save challenge to Supabase:", err);
+    }
+  }, []);
+
+  const addChallengesBulk = useCallback(async (newChallenges: Challenge[]) => {
+    setChallenges(p => [...p, ...newChallenges]);
+    try {
+      await supabaseDB.createProblemsBulk(newChallenges);
+    } catch (err) {
+      console.error("Failed to bulk save challenges to Supabase:", err);
     }
   }, []);
 
@@ -227,7 +355,7 @@ export const ChallengesProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   return (
     <ChallengesContext.Provider value={{
       tracks, challenges, getChallengesByTrack,
-      addChallenge, updateChallenge, deleteChallenge,
+      addChallenge, addChallengesBulk, updateChallenge, deleteChallenge,
       addTrack, updateTrack, deleteTrack,
     }}>
       {children}

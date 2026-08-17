@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { ShieldAlert, Lock, User, Loader2, Eye, EyeOff } from 'lucide-react';
+import { ShieldAlert, Lock, User, Loader2, Eye, EyeOff, Sparkles } from 'lucide-react';
 import { supabase } from '../services/supabaseService';
 import { useAuth } from '../contexts/AuthContext';
 import { Logo } from '../components/Logo';
@@ -16,7 +16,7 @@ export default function MasterLogin() {
   const { user } = useAuth();
 
   useEffect(() => {
-    if (user?.email?.toLowerCase() === 'founder@glintspark.in') {
+    if (user?.email?.toLowerCase() === 'admin@glintspark.in') {
       navigate('/admin/master', { replace: true });
     }
   }, [user, navigate]);
@@ -38,11 +38,11 @@ export default function MasterLogin() {
       });
 
       if (signInError) {
-        throw new Error("Invalid credentials or unauthorized access.");
+        throw new Error(signInError.message || "Invalid credentials or unauthorized access.");
       }
       
       const loggedInEmail = signInData?.user?.email?.toLowerCase();
-      if (loggedInEmail === 'founder@glintspark.in') {
+      if (loggedInEmail === 'admin@glintspark.in') {
         navigate('/admin/master', { replace: true });
       } else {
         // If someone else logs in here, still send them somewhere safe
@@ -78,8 +78,15 @@ export default function MasterLogin() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="absolute top-8 left-8">
-        <Logo />
+      <div className="absolute top-8 left-8 flex items-center gap-2">
+        <div className="relative flex items-center justify-center">
+          <Sparkles className="w-8 h-8 text-[#f59e0b] animate-pulse" strokeWidth={1.5} />
+          <div className="absolute inset-0 bg-[#f59e0b]/20 blur-xl rounded-full" />
+        </div>
+        <div className="text-2xl tracking-tight flex items-baseline">
+          <span className="font-bold text-slate-900">Glint</span>
+          <span className="font-bold text-[#f59e0b]">Spark</span>
+        </div>
       </div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -111,7 +118,7 @@ export default function MasterLogin() {
               </div>
               <input 
                 type="email" 
-                placeholder="Admin Email"
+                placeholder="admin@glintspark.in"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-11 pr-4 py-3.5 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 hover:border-slate-300 rounded-xl text-sm focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400 font-medium"

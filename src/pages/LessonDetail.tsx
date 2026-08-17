@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ChevronDown, Loader2, Sparkles, CheckCircle2, Lightbulb, Volume2, Pause, Square } from 'lucide-react';
 import { AdBanner } from '../components/AdBanner';
 import Editor from '@monaco-editor/react';
-import { firebaseDB } from '../services/firebaseService';
 import { supabaseDB } from '../services/supabaseService';
 import { useAuth } from '../contexts/AuthContext';
 import { executeWithWaterfall } from '../services/executionService';
@@ -148,6 +147,10 @@ export default function LessonDetail() {
   const [runningBlockId, setRunningBlockId] = useState<string | null>(null);
   const [localCode, setLocalCode] = useState<Record<string, string>>({});
 
+  const [activeReadingBlockId, setActiveReadingBlockId] = useState<string | null>(null);
+  const ttsQueue = useRef<{id: string, text: string}[]>([]);
+  const ttsIndex = useRef<number>(0);
+
   const getLangId = (lang: string) => {
     const l = (lang || '').toLowerCase();
     if (l === 'c') return 50;
@@ -205,7 +208,7 @@ export default function LessonDetail() {
       setIsLoading(true);
       let modulesForTopic: Module[] = [];
       try {
-        const modulesFromDB = await firebaseDB.getCurriculum(currentTopic);
+        const modulesFromDB = await supabaseDB.getCurriculum(currentTopic);
         modulesForTopic = modulesFromDB || [];
       } catch (e) {
         console.error("Failed to fetch curriculum from DB", e);
@@ -262,7 +265,6 @@ export default function LessonDetail() {
 
     loadCurriculum();
 
-    window.addEventListener('storage', loadCurriculum);
     window.addEventListener('curriculum_updated', loadCurriculum);
 
     // Listen for quiz completions from other tabs
@@ -280,7 +282,6 @@ export default function LessonDetail() {
     };
 
     return () => {
-      window.removeEventListener('storage', loadCurriculum);
       window.removeEventListener('curriculum_updated', loadCurriculum);
       channel.close();
     };
@@ -304,6 +305,64 @@ export default function LessonDetail() {
     };
   }, [activeChapterIdx]);
 
+  // Pause TTS when switching browser tabs
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        window.speechSynthesis.pause();
+        setTtsState(prev => prev === 'playing' ? 'paused' : prev);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  const playNextUtterance = () => {
+    if (ttsIndex.current >= ttsQueue.current.length) {
+      setTtsState('idle');
+      setActiveReadingBlockId(null);
+      return;
+    }
+    
+    const chunk = ttsQueue.current[ttsIndex.current];
+    setActiveReadingBlockId(chunk.id);
+
+    // Smooth scroll only if element is out of comfortable viewing area
+    const element = document.getElementById(chunk.id === 'title' ? 'block-title' : `block-${chunk.id}`);
+    if (element) {
+      const rect = element.getBoundingClientRect();
+      const isVisible = rect.top >= 80 && rect.bottom <= (window.innerHeight - 80);
+      if (!isVisible) {
+        const y = rect.top + window.scrollY - 120;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+      }
+    }
+
+    const utterance = new SpeechSynthesisUtterance(chunk.text);
+    const voices = window.speechSynthesis.getVoices();
+    
+    if (ttsLang === 'te') {
+      utterance.lang = 'te-IN';
+      const teVoice = voices.find(v => v.lang.includes('te'));
+      if (teVoice) utterance.voice = teVoice;
+    } else {
+      utterance.lang = 'en-IN';
+      const preferredVoice = voices.find(v => v.lang === 'en-IN' || v.name.includes('India') || v.name.includes('Indian English'));
+      if (preferredVoice) utterance.voice = preferredVoice;
+    }
+
+    utterance.onend = () => {
+      ttsIndex.current++;
+      playNextUtterance();
+    };
+    utterance.onerror = () => {
+      setTtsState('idle');
+      setActiveReadingBlockId(null);
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
   const handleTTS = async () => {
     if (ttsState === 'playing') {
       window.speechSynthesis.pause();
@@ -312,61 +371,51 @@ export default function LessonDetail() {
       window.speechSynthesis.resume();
       setTtsState('playing');
     } else {
-      // Extract text from blocks
-      let fullText = activeChapter.title + ". ";
+      window.speechSynthesis.cancel();
+      ttsQueue.current = [];
+      ttsIndex.current = 0;
+
+      ttsQueue.current.push({ id: 'title', text: activeChapter.title });
+      
       const activeBlocks = activeChapter.blocks || [];
       activeBlocks.forEach(block => {
-        if (block.type === 'header') {
-          fullText += (block as any).text + ". ";
-        } else if (block.type === 'text' || block.type === 'simple_terms' || block.type === 'note' || block.type === 'analogy') {
-          fullText += (block as any).content + ". ";
-        } else if (block.type === 'list') {
-          fullText += (block as any).items.join(". ") + ". ";
-        } else if (block.type === 'example') {
-          fullText += "Example: " + (block as any).title + ". " + ((block as any).description || "") + ". ";
+        let text = '';
+        if (block.type === 'header') text = (block as any).text;
+        else if (block.type === 'text' || block.type === 'simple_terms' || block.type === 'note' || block.type === 'analogy') text = (block as any).content;
+        else if (block.type === 'list') text = (block as any).items.join(". ");
+        else if (block.type === 'example') text = "Example: " + (block as any).title + ". " + ((block as any).description || "");
+        
+        if (text) {
+           text = text.replace(/\*\*/g, '');
+           ttsQueue.current.push({ id: block.id, text });
         }
       });
-      // Clean markdown bold syntax
-      fullText = fullText.replace(/\*\*/g, '');
-
-      let textToSpeak = fullText;
 
       if (ttsLang === 'te') {
         setIsTranslating(true);
-        try {
-          const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=te&dt=t&q=${encodeURIComponent(fullText)}`);
-          const data = await response.json();
-          textToSpeak = data[0].map((item: any) => item[0]).join('');
-        } catch (e) {
-          console.error("Translation failed", e);
-          textToSpeak = "Translation failed. " + fullText;
+        for (let i = 0; i < ttsQueue.current.length; i++) {
+           try {
+             const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=te&dt=t&q=${encodeURIComponent(ttsQueue.current[i].text)}`);
+             const data = await response.json();
+             ttsQueue.current[i].text = data[0].map((item: any) => item[0]).join('');
+           } catch (e) {
+             console.error("Translation failed", e);
+           }
         }
         setIsTranslating(false);
       }
 
-      const utterance = new SpeechSynthesisUtterance(textToSpeak);
-      const voices = window.speechSynthesis.getVoices();
-      
-      if (ttsLang === 'te') {
-        utterance.lang = 'te-IN';
-        const teVoice = voices.find(v => v.lang.includes('te'));
-        if (teVoice) utterance.voice = teVoice;
-      } else {
-        const preferredVoice = voices.find(v => v.name.includes('Google US English') || v.lang === 'en-US');
-        if (preferredVoice) utterance.voice = preferredVoice;
-      }
-
-      utterance.onend = () => setTtsState('idle');
-      utterance.onerror = () => setTtsState('idle');
-      
-      window.speechSynthesis.speak(utterance);
       setTtsState('playing');
+      playNextUtterance();
     }
   };
 
   const handleStopTTS = () => {
     window.speechSynthesis.cancel();
     setTtsState('idle');
+    setActiveReadingBlockId(null);
+    ttsQueue.current = [];
+    ttsIndex.current = 0;
   };
 
   // If no content is loaded yet
@@ -478,7 +527,7 @@ export default function LessonDetail() {
         {/* 2. CENTER COLUMN */}
         <main className="flex-1 w-full p-6 md:p-10 space-y-8 max-w-[900px]">
           
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-6 mb-2">
+          <div id="block-title" className={`flex flex-col md:flex-row md:items-center justify-between gap-4 mt-6 mb-2 transition-colors duration-300 ${activeReadingBlockId === 'title' ? 'bg-amber-50 ring-2 ring-amber-300 p-4 -mx-4 rounded-xl' : ''}`}>
             <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">{activeChapter.title}</h1>
             <div className="flex flex-wrap gap-2 shrink-0">
               <select 
@@ -514,7 +563,13 @@ export default function LessonDetail() {
           {/* === DYNAMIC BLOCK RENDERER === */}
           <div className="space-y-8 mt-6">
             {activeBlocks.map(block => {
-              switch (block.type) {
+              const isReading = activeReadingBlockId === block.id;
+              const wrapperClass = `transition-colors duration-300 ${isReading ? 'bg-amber-50 ring-2 ring-amber-300 p-4 -mx-4 rounded-xl' : ''}`;
+              
+              return (
+                <div id={`block-${block.id}`} key={block.id} className={wrapperClass}>
+                  {(() => {
+                    switch (block.type) {
                 case 'header':
                   return block.size === 'h2' 
                     ? <h2 key={block.id} className="text-2xl font-bold text-slate-900 mt-8 mb-4">{block.text}</h2>
@@ -692,21 +747,7 @@ export default function LessonDetail() {
                     </div>
                   );
 
-                
-                case 'image':
-                  return (
-                    <div key={block.id} className="flex flex-col items-center my-6 space-y-3">
-                      <img 
-                        src={block.url} 
-                        alt={block.altText} 
-                        className="max-w-full rounded border border-slate-200 shadow-sm object-contain"
-                      />
-                      {block.caption && (
-                        <span className="text-xs text-slate-500 font-medium italic">{block.caption}</span>
-                      )}
-                    </div>
-                  );
-                
+
                 case 'flowchart':
                   return (
                     <div key={block.id} className="my-8 flex flex-col items-center">
@@ -720,8 +761,11 @@ export default function LessonDetail() {
                 default:
                   return null;
               }
-            })}
+            })()}
           </div>
+        );
+      })}
+    </div>
 
           {/* Quiz Required Banner */}
           {activeChapter.quizId && (

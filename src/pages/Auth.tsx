@@ -12,9 +12,12 @@ import { supabase } from '../services/supabaseService';
 import ReCAPTCHA from 'react-google-recaptcha';
 
 export default function Auth() {
-  const [isLogin, setIsLogin] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
+  const [isLogin, setIsLogin] = useState(() => {
+    const searchParams = new URLSearchParams(location.search);
+    return searchParams.get('mode') !== 'signup' && location.state?.mode !== 'signup';
+  });
   const { user } = useAuth();
   const [userRole, setUserRole] = useState<'developer' | 'company'>(() => {
     return location.state?.role === 'company' ? 'company' : 'developer';
@@ -22,7 +25,19 @@ export default function Auth() {
   const from = (location.state?.from && location.state.from !== '/') ? location.state.from : '/dashboard';
 
   useEffect(() => {
-    if (user) {
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get('mode') === 'signup' || location.state?.mode === 'signup') {
+      setIsLogin(false);
+    } else if (searchParams.get('mode') === 'login' || location.state?.mode === 'login') {
+      setIsLogin(true);
+    }
+  }, [location.search, location.state]);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const isExplicitSignup = searchParams.get('mode') === 'signup' || location.state?.mode === 'signup';
+
+    if (user && !isExplicitSignup) {
       sessionStorage.removeItem('isGuest');
       
       // Dynamic Admin Redirection
@@ -35,7 +50,7 @@ export default function Auth() {
         navigate(from, { replace: true });
       }
     }
-  }, [user, navigate, from]);
+  }, [user, navigate, from, location.search, location.state]);
 
   // State bindings for form inputs
   const [name, setName] = useState('');
@@ -325,6 +340,23 @@ export default function Auth() {
                   : (userRole === 'developer' ? 'Start your journey to software mastery today.' : 'Build your custom hiring pipeline in seconds.')}
               </p>
 
+              {/* Logged-in session indicator banner */}
+              {user && (
+                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 text-amber-800 font-medium">
+                    <User size={16} className="text-amber-600 shrink-0" />
+                    <span>Currently signed in as <strong className="font-bold">{user.email}</strong></span>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => navigate(user.email?.toLowerCase() === 'founder@glintspark.in' ? '/admin/master' : (user.email?.toLowerCase() === 'sreenivas@gmail.com' || user.email?.includes('srit')) ? '/admin/college' : '/dashboard')}
+                    className="text-amber-900 font-bold underline hover:text-amber-700 whitespace-nowrap"
+                  >
+                    Go to Dashboard &rarr;
+                  </button>
+                </div>
+              )}
+
               {/* Feedback messages */}
               {error && (
                 <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-sm font-medium flex items-center gap-3">
@@ -470,7 +502,13 @@ export default function Auth() {
                     </div>
 
                     {isLogin && (
-                      <div className="flex justify-end pt-1">
+                      <div className="flex justify-between pt-1">
+                        <Link 
+                          to="/recovery"
+                          className="text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors"
+                        >
+                          Lost College Email?
+                        </Link>
                         <button 
                           type="button" 
                           onClick={handleForgotPassword}

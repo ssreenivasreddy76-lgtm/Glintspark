@@ -92,18 +92,20 @@ const cardVariants = {
   },
 };
 
-import { firebaseDB } from '../services/firebaseService';
+import { supabaseDB } from '../services/supabaseService';
 import { AnimatePresence } from 'framer-motion';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Curriculum() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [lessonsMap, setLessonsMap] = useState<Record<string, any[]>>({});
   const [showDevMessage, setShowDevMessage] = useState(false);
 
   useEffect(() => {
-    const fetchGlobalStats = async () => {
+    const fetchAllData = async () => {
       try {
-        const allData = await firebaseDB.getAllCurricula();
+        const allData = await supabaseDB.getAllCurricula();
         const globalLessonsMap: Record<string, any[]> = {};
         
         // Store the modules array directly so that .length gives the number of modules
@@ -117,7 +119,7 @@ export default function Curriculum() {
       }
     };
     
-    fetchGlobalStats();
+    fetchAllData();
   }, []);
 
   const tracks = baseTracks.map(track => ({
@@ -129,6 +131,30 @@ export default function Curriculum() {
   const beginnerTracks = tracks.filter(t => t.group === 'beginner');
   const intermediateTracks = tracks.filter(t => t.group === 'intermediate');
   const advancedTracks = tracks.filter(t => t.group === 'advanced');
+
+  // Resume tracking logic
+  let startedTrackIds: string[] = [];
+  let lastActiveTrackId: string | null = null;
+  let activeTrack: any = null;
+  let activeTrackProgress = 0;
+  
+  try {
+    const validCompletedIds = Array.isArray(user?.completedLessonIds) 
+      ? user.completedLessonIds.filter((id): id is string => typeof id === 'string') 
+      : [];
+      
+    startedTrackIds = Array.from(new Set(validCompletedIds.map(id => String(id).split('-')[0])));
+    lastActiveTrackId = startedTrackIds.length > 0 ? startedTrackIds[startedTrackIds.length - 1] : null;
+    activeTrack = lastActiveTrackId ? tracks.find(t => t.id === lastActiveTrackId) : null;
+    
+    if (activeTrack) {
+       const completedInTrack = validCompletedIds.filter(id => String(id).startsWith(`${activeTrack.id}-`)).length;
+       const totalInTrack = activeTrack.lessons || 1;
+       activeTrackProgress = Math.round((completedInTrack / totalInTrack) * 100);
+    }
+  } catch (err) {
+    console.error("Error calculating track progress in Curriculum.tsx:", err);
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans pb-24 relative overflow-hidden">
@@ -153,13 +179,53 @@ export default function Curriculum() {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 space-y-12">
         
-        {/* Top Header Bar */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-slate-200">
           <div>
             <h1 className="text-3xl font-black text-slate-900 tracking-tight">Curriculum Tracks</h1>
             <p className="text-slate-500 text-sm font-medium mt-1">Step-by-step master tracks designed from beginner to industry expert.</p>
           </div>
         </div>
+
+        {/* RESUME BANNER */}
+        {activeTrack && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-[24px] p-6 shadow-lg border border-slate-200 flex flex-col md:flex-row items-center gap-6 relative overflow-hidden"
+          >
+             {/* Background glow */}
+             <div className="absolute top-0 right-0 w-64 h-64 bg-brand-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none"></div>
+             
+             <div className="w-16 h-16 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center p-3 shrink-0 shadow-sm z-10">
+               {activeTrack.icon}
+             </div>
+             
+             <div className="flex-1 z-10 w-full">
+               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-1">Resume Learning</h3>
+               <h2 className="text-2xl font-black text-slate-900">{activeTrack.title}</h2>
+               
+               <div className="flex items-center gap-4 mt-3 w-full max-w-md">
+                 <div className="h-2 flex-1 bg-slate-100 rounded-full overflow-hidden">
+                   <div 
+                     className="h-full bg-brand-primary rounded-full transition-all duration-1000"
+                     style={{ width: `${Math.min(100, activeTrackProgress)}%` }}
+                   />
+                 </div>
+                 <span className="text-sm font-black text-brand-primary">{Math.min(100, activeTrackProgress)}%</span>
+               </div>
+             </div>
+             
+             <div className="shrink-0 z-10 w-full md:w-auto">
+               <Link 
+                 to={`/curriculum/${activeTrack.id}`}
+                 className="flex items-center justify-center gap-2 bg-slate-900 hover:bg-black text-white px-8 py-4 rounded-xl font-bold transition-all shadow-md hover:shadow-xl w-full md:w-auto hover:-translate-y-0.5"
+               >
+                 Continue Course <ArrowRight size={18} />
+               </Link>
+             </div>
+          </motion.div>
+        )}
+
         {/* Beginner Tracks */}
         <section>
           <div className="flex items-center justify-between mb-8">

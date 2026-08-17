@@ -5,15 +5,15 @@ import {
   Database, DatabaseZap, Cpu, Lock,
   Braces, Binary, Calculator, Flame,
   Zap, Trophy, ArrowRight, Play, Star,
-  TrendingUp, CheckCircle2, Loader2, XCircle
+  TrendingUp, CheckCircle2, Loader2, XCircle, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../services/supabaseService';
+import { supabaseDB } from '../services/supabaseService';
 import { firebaseDB } from '../services/firebaseService';
 import { useChallenges } from '../contexts/ChallengesContext';
 
-// ─── Skill grid data ──────────────────────────────────────────────
+// --- Skill grid data ----------------------------------------------
 const skills = [
   { name: "C",           icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/c/c-original.svg"                          alt="C"   className="w-5 h-5" /> },
   { name: "Python",      icon: <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg"               alt="Py"  className="w-5 h-5" /> },
@@ -26,10 +26,6 @@ const skills = [
   { name: "Data Structures", icon: <img src="https://img.icons8.com/color/96/data-configuration.png" alt="DS" className="w-6 h-6" /> },
   { name: "Algorithms",      icon: <img src="https://img.icons8.com/color/96/flow-chart.png" alt="Algo" className="w-6 h-6" /> },
 ];
-
-// Removed hardcoded mock interviews, these are now fetched from state
-
-// ─── Helper ───────────────────────────────────────────────────────
 function getInitials(name: string) {
   return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 }
@@ -55,6 +51,7 @@ function getPracticeTrackId(name: string) {
   return 'javascript';
 }
 
+
 const DEFAULT_TEMPLATES = [
   { id: 'dt-1', title: 'C Programming', role: 'Software Engineer', difficulty: 'Medium', techStack: 'C, Pointers, Memory Management' },
   { id: 'dt-2', title: 'Java Developer', role: 'Backend', difficulty: 'Medium', techStack: 'Java, OOP, Spring Boot' },
@@ -66,6 +63,9 @@ const DEFAULT_TEMPLATES = [
   { id: 'dt-8', title: 'Database & SQL', role: 'Data', difficulty: 'Medium', techStack: 'SQL, PostgreSQL, Database Design' },
   { id: 'dt-9', title: 'System Design Architect', role: 'Architect', difficulty: 'Hard', techStack: 'System Design, Microservices, Cloud' },
 ];
+
+
+// PRACTICE_SHEETS now fetched dynamically from Supabase
 
 const INITIAL_MOCK_INTERVIEWS = DEFAULT_TEMPLATES.map((t: any) => ({
   id: t.id,
@@ -85,6 +85,22 @@ export default function Dashboard() {
   const [showAllInterviews, setShowAllInterviews] = useState(false);
   const [mockInterviews, setMockInterviews] = useState<any[]>(INITIAL_MOCK_INTERVIEWS);
   const [showDevMessage, setShowDevMessage] = useState(false);
+  const [practiceSheets, setPracticeSheets] = useState<any[]>([]);
+  const [loadingSheets, setLoadingSheets] = useState(true);
+
+  useEffect(() => {
+    const fetchSheets = async () => {
+      try {
+        const sheets = await supabaseDB.getPracticeSheets();
+        setPracticeSheets(sheets || []);
+      } catch (err) {
+        console.error("Failed to fetch sheets", err);
+      } finally {
+        setLoadingSheets(false);
+      }
+    };
+    fetchSheets();
+  }, []);
 
   // Fetch mock interviews from Firebase + defaults
   useEffect(() => {
@@ -313,30 +329,64 @@ export default function Dashboard() {
             </motion.div>
           )}
 
+          
+          {/* A2Z PRACTICE SHEETS */}
           <div className="mb-8">
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Challenges</h2>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Structured Practice Sheets</h2>
+            <p className="text-slate-500 font-medium mt-1">Master topics step-by-step with our curated curriculums.</p>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
-            {skills.map((skill, i) => (
-              <Link to={`/challenges/track/${getPracticeTrackId(skill.name)}`} key={skill.name}>
+
+          
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {practiceSheets.length > 0 ? practiceSheets.map((sheet, i) => (
+              <Link to={`/practice-sheet/${sheet.id}`} key={sheet.id}>
                 <motion.div
-                  initial={{ opacity:0, scale:0.95 }} animate={{ opacity:1, scale:1 }} transition={{ delay: i * 0.02 }}
-                  className="relative p-[1px] rounded-2xl bg-gradient-to-b from-slate-200 to-slate-100 hover:from-blue-400 hover:to-cyan-400 transition-all duration-500 shadow-sm hover:shadow-xl hover:shadow-blue-500/15 group overflow-hidden hover:-translate-y-1"
+                  initial={{ opacity:0, y:20 }} 
+                  animate={{ opacity:1, y:0 }} 
+                  transition={{ delay: i * 0.05, duration: 0.4 }}
+                  className="relative p-[1px] rounded-[32px] bg-gradient-to-b from-slate-200 to-slate-100 hover:from-blue-400 hover:to-cyan-400 transition-all duration-500 shadow-sm hover:shadow-2xl hover:shadow-blue-500/20 group h-full flex flex-col"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-0"></div>
-                  <div className="h-full bg-white backdrop-blur-xl rounded-[15px] p-4 flex items-center gap-4 transition-all relative z-10 group-hover:bg-white">
-                    <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center border border-slate-100 group-hover:bg-white group-hover:shadow-sm transition-all shrink-0">
-                      <div className="group-hover:scale-110 group-hover:-rotate-3 transition-transform duration-300">{skill.icon}</div>
+                  <div className="h-full bg-white backdrop-blur-xl p-8 rounded-[31px] flex flex-col items-start transition-all group-hover:bg-white relative overflow-hidden">
+                    <div className="absolute -top-20 -right-20 w-48 h-48 bg-gradient-to-br from-blue-400/10 to-cyan-400/10 blur-3xl rounded-full group-hover:from-blue-400/20 group-hover:to-cyan-400/20 transition-all duration-500"></div>
+                    
+                    <div className="w-14 h-14 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 group-hover:bg-gradient-to-br group-hover:from-blue-600 group-hover:to-cyan-600 group-hover:text-white transition-all duration-500 shadow-sm group-hover:shadow-blue-500/30 relative z-10">
+                      {sheet.icon}
                     </div>
-                    <span className="text-sm font-black text-slate-800 tracking-tight leading-tight group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-blue-600 group-hover:to-cyan-600 transition-all">{skill.name}</span>
+
+                    <h3 className="text-2xl font-black text-slate-900 tracking-tight mb-3 relative z-10 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-blue-600 group-hover:to-cyan-600 transition-all">{sheet.title}</h3>
+                    <p className="text-slate-500 text-sm leading-relaxed font-medium mb-8 flex-grow relative z-10">{sheet.description || 'Master this topic step-by-step.'}</p>
+
+                    <div className="relative z-10 w-full mt-auto">
+                      <div
+                        className="w-full flex px-6 py-4 bg-slate-900 group-hover:bg-gradient-to-r group-hover:from-blue-600 group-hover:to-cyan-600 text-white rounded-xl text-sm font-black uppercase tracking-widest transition-all duration-300 shadow-md group-hover:shadow-xl group-hover:shadow-blue-500/25 justify-center items-center gap-2 group/btn"
+                      >
+                        Start Journey <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
+                      </div>
+                    </div>
                   </div>
                 </motion.div>
               </Link>
-            ))}
+            )) : loadingSheets ? (
+              <div className="col-span-3 flex justify-center py-12">
+                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+              </div>
+            ) : (
+              <div className="col-span-3 text-center py-12 bg-white rounded-3xl border border-slate-200/60 shadow-sm">
+                <DatabaseZap className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-slate-700 mb-2">No Practice Sheets Yet</h3>
+                <p className="text-slate-500 font-medium max-w-md mx-auto">
+                  Practice sheets are currently being curated. Check back soon for highly structured roadmaps!
+                </p>
+              </div>
+            )}
           </div>
         </section>
+
+
 
       </div>
     </div>
   );
 }
+

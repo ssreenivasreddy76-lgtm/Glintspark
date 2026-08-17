@@ -11,7 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 export default function PracticeCatalog() {
   const navigate = useNavigate();
   const [solvedSubmissions, setSolvedSubmissions] = useState<{challengeId: string}[]>([]);
-  const [challengeStats, setChallengeStats] = useState<Record<string, string>>({});
+  const [challengeStats, setChallengeStats] = useState<Record<string, { accuracy: string, total: number }>>({});
   const { user } = useAuth();
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>([]);
   const { tracks: practiceTracks, challenges: allChallenges } = useChallenges();
@@ -208,11 +208,15 @@ export default function PracticeCatalog() {
                     >
                       {prob.title}
                     </h3>
+                    <div className="flex justify-between items-center text-xs text-slate-500 font-medium">
+                      <span className="flex items-center gap-1.5"><CheckCircle2 size={14} className={isSolved ? 'text-emerald-500' : 'text-slate-300'} /> {isSolved ? 'Solved' : 'Unsolved'}</span>
+                      <span className="px-2 py-0.5 rounded-full bg-slate-100">{challengeStats[prob.id]?.accuracy || '0%'} Accuracy</span>
+                    </div>
                     <div className="text-[14px] text-slate-500">
                       <span className={prob.difficulty === 'Easy' ? 'text-[#1ba94c]' : prob.difficulty === 'Medium' ? 'text-amber-500' : 'text-rose-600'}>
                         {prob.difficulty}
                       </span>
-                      , {prob.category}, Max Score: {prob.points}, Success Rate: {challengeStats[prob.id] || '0%'}
+                      , {prob.category}, Max Score: {prob.points}
                     </div>
                   </div>
 

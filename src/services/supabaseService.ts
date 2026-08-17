@@ -114,7 +114,8 @@ class SupabaseService {
     try {
       const { count, error } = await this.supabase
         .from('users')
-        .select('id', { count: 'exact', head: true })
+        .select('*', { count: 'exact', head: true })
+        .neq('email', 'admin@glintspark.in')
         .gt('xp', xp);
         
       if (error) throw error;
@@ -131,6 +132,7 @@ class SupabaseService {
       const { data, error } = await this.supabase
         .from('users')
         .select('*')
+        .neq('email', 'admin@glintspark.in')
         .order('xp', { ascending: false })
         .limit(limit);
         
@@ -461,7 +463,7 @@ class SupabaseService {
     }
   }
 
-  async getGlobalChallengeStats(): Promise<Record<string, string>> {
+  async getGlobalChallengeStats(): Promise<Record<string, { accuracy: string, total: number }>> {
     if (!this.isConfigured) return {};
     try {
       const { data, error } = await this.supabase
@@ -484,12 +486,15 @@ class SupabaseService {
         }
       });
 
-      const result: Record<string, string> = {};
+      const result: Record<string, { accuracy: string, total: number }> = {};
       for (const [id, counts] of Object.entries(stats)) {
         if (counts.total === 0) {
-          result[id] = '0%';
+          result[id] = { accuracy: '0%', total: 0 };
         } else {
-          result[id] = `${Math.round((counts.passed / counts.total) * 100)}%`;
+          result[id] = { 
+            accuracy: `${Math.round((counts.passed / counts.total) * 100)}%`,
+            total: counts.total
+          };
         }
       }
       return result;
@@ -583,21 +588,163 @@ class SupabaseService {
       });
     }
 
-    // 4. Insert hidden test cases from dynamic list
-    if (Array.isArray(data.hiddenTestCasesList)) {
-      for (const tc of data.hiddenTestCasesList) {
-        if (tc.input && tc.output) {
-          await this.supabase.from('hidden_test_cases').insert({
+    // 4. Insert hidden test cases from dynamic list via Bulk Insert (Crucial for 150+ test cases)
+    let tcList: any[] = [];
+    if (Array.isArray(data.hiddenTestCasesList) && data.hiddenTestCasesList.length > 0) {
+      tcList = data.hiddenTestCasesList;
+    } else if (typeof data.hiddenTestCases === 'string' && data.hiddenTestCases.trim()) {
+      try {
+        const parsed = JSON.parse(data.hiddenTestCases);
+        if (Array.isArray(parsed)) tcList = parsed;
+      } catch (e) {
+        console.error("Failed to parse hiddenTestCases string:", e);
+      }
+    }
+
+    if (tcList.length > 0) {
+      const testCasesToInsert = tcList
+        .filter((tc: any) => tc.input !== undefined && tc.output !== undefined)
+        .map((tc: any) => ({
              problem_id: problemId,
              input_data: tc.input,
              expected_output: tc.output,
              is_hidden: true
-          });
+        }));
+        
+      if (testCasesToInsert.length > 0) {
+        const { error: tcError } = await this.supabase.from('hidden_test_cases').insert(testCasesToInsert);
+        if (tcError) {
+          console.error("Warning: Failed to bulk insert hidden test cases:", tcError);
         }
       }
     }
     
     return problemId;
+  }
+
+  async createProblemsBulk(problemsData: any[]) {
+    if (!this.isConfigured || problemsData.length === 0) return;
+
+    // 1. Prepare problems
+    const problemsToInsert = problemsData.map(data => ({
+        id: data.id,
+        title: data.title,
+        difficulty: data.difficulty,
+        category: data.category,
+        description: data.description || '',
+        input_format: data.inputFormat || '',
+        output_format: data.outputFormat || '',
+        constraints: data.constraints || '',
+        is_practice: data.isPractice !== false
+    }));
+
+    // 2. Prepare languages
+    const languagesToInsert: any[] = [];
+    problemsData.forEach(data => {
+      const tracksToInsert = Array.isArray(data.allowedLanguages) && data.allowedLanguages.length > 0 ? data.allowedLanguages : [data.track || 'javascript'];
+      tracksToInsert.forEach((track: string) => {
+        languagesToInsert.push({
+          problem_id: data.id,
+          language_id: track,
+          time_limit_seconds: data.timeLimit || 2.0,
+          memory_limit_mb: data.memoryLimit || 256,
+          score: data.points || 10
+        });
+      });
+    });
+
+    // 3. Prepare sample test cases
+    const samplesToInsert: any[] = [];
+    problemsData.forEach(data => {
+      if (data.sampleInput1 || data.sampleOutput1) {
+        samplesToInsert.push({
+          problem_id: data.id,
+          input_data: data.sampleInput1 || '',
+          output_data: data.sampleOutput1 || '',
+          explanation: data.explanation1 || ''
+        });
+      }
+      if (data.sampleInput2 || data.sampleOutput2) {
+        samplesToInsert.push({
+          problem_id: data.id,
+          input_data: data.sampleInput2 || '',
+          output_data: data.sampleOutput2 || '',
+          explanation: data.explanation2 || ''
+        });
+      }
+    });
+
+    // 4. Prepare hidden test cases
+    const hiddenToInsert: any[] = [];
+    problemsData.forEach(data => {
+      let tcList: any[] = [];
+      if (Array.isArray(data.hiddenTestCasesList) && data.hiddenTestCasesList.length > 0) {
+        tcList = data.hiddenTestCasesList;
+      } else if (typeof data.hiddenTestCases === 'string' && data.hiddenTestCases.trim()) {
+        try {
+          const parsed = JSON.parse(data.hiddenTestCases);
+          if (Array.isArray(parsed)) tcList = parsed;
+        } catch (e) {
+          console.error("Failed to parse hiddenTestCases string in bulk:", e);
+        }
+      }
+
+      if (tcList.length > 0) {
+        tcList
+          .filter((tc: any) => tc.input !== undefined && tc.output !== undefined)
+          .forEach((tc: any) => {
+            hiddenToInsert.push({
+              problem_id: data.id,
+              input_data: tc.input,
+              expected_output: tc.output,
+              is_hidden: true
+            });
+          });
+      }
+    });
+
+    // Helper to chunk arrays
+    const chunkArray = (arr: any[], size: number) => {
+      const chunks = [];
+      for (let i = 0; i < arr.length; i += size) {
+        chunks.push(arr.slice(i, i + size));
+      }
+      return chunks;
+    };
+
+    const CHUNK_SIZE = 50;
+
+    // Perform chunked inserts to respect foreign key constraints and payload limits
+    const probChunks = chunkArray(problemsToInsert, CHUNK_SIZE);
+    for (const chunk of probChunks) {
+      const { error: probError } = await this.supabase.from('problems').insert(chunk);
+      if (probError) {
+        console.error("Error bulk inserting problems chunk:", JSON.stringify(probError, null, 2));
+        // Continue with other chunks if one fails? Better to return to avoid dangling FKs
+        return; 
+      }
+    }
+
+    if (languagesToInsert.length > 0) {
+      const langChunks = chunkArray(languagesToInsert, CHUNK_SIZE);
+      for (const chunk of langChunks) {
+        await this.supabase.from('problem_languages').insert(chunk);
+      }
+    }
+    
+    if (samplesToInsert.length > 0) {
+      const sampChunks = chunkArray(samplesToInsert, CHUNK_SIZE);
+      for (const chunk of sampChunks) {
+        await this.supabase.from('sample_test_cases').insert(chunk);
+      }
+    }
+    
+    if (hiddenToInsert.length > 0) {
+      const hideChunks = chunkArray(hiddenToInsert, CHUNK_SIZE);
+      for (const chunk of hideChunks) {
+        await this.supabase.from('hidden_test_cases').insert(chunk);
+      }
+    }
   }
 
   async deleteProblem(id: string) {
@@ -628,7 +775,8 @@ class SupabaseService {
           input_data,
           expected_output
         )
-      `);
+      `)
+      .order('created_at', { ascending: true });
       
     if (error) {
       console.error("Error fetching problems:", error);
@@ -657,7 +805,13 @@ class SupabaseService {
         track: firstLang.language_id || 'javascript', // legacy fallback
         timeLimit: firstLang.time_limit_seconds || 2.0,
         memoryLimit: firstLang.memory_limit_mb || 256,
-        points: firstLang.score || 10,
+        points: (() => {
+          const diff = (p.difficulty || 'Easy').toLowerCase().trim();
+          if (diff === 'easy') return 2;
+          if (diff === 'medium') return 5;
+          if (diff === 'hard') return 10;
+          return firstLang.score || 5;
+        })(),
         
         // Samples
         sampleInput1: samples[0]?.input_data || '',
@@ -675,6 +829,110 @@ class SupabaseService {
         }))
       };
     });
+  }
+
+  // --- Curriculum API ---
+  async getCurriculum(trackId: string): Promise<any[]> {
+    if (!this.isConfigured) return [];
+    try {
+      const { data, error } = await this.supabase
+        .from('curriculum_tracks')
+        .select('modules')
+        .eq('id', trackId)
+        .single();
+        
+      if (error) {
+        if (error.code === 'PGRST116') return []; // Not found
+        throw error;
+      }
+      return data.modules || [];
+    } catch (err) {
+      console.error("Error fetching curriculum from Supabase:", err);
+      return [];
+    }
+  }
+
+  async getAllCurricula(): Promise<Record<string, any[]>> {
+    if (!this.isConfigured) return {};
+    try {
+      const { data, error } = await this.supabase
+        .from('curriculum_tracks')
+        .select('id, modules');
+        
+      if (error) throw error;
+      
+      const curriculaMap: Record<string, any[]> = {};
+      data?.forEach((track) => {
+        curriculaMap[track.id] = track.modules || [];
+      });
+      return curriculaMap;
+    } catch (err) {
+      console.error("Error fetching all curricula from Supabase:", err);
+      return {};
+    }
+  }
+
+  async saveCurriculum(trackId: string, modules: any[]): Promise<boolean> {
+    if (!this.isConfigured) return false;
+    try {
+      const { error } = await this.supabase
+        .from('curriculum_tracks')
+        .upsert({ id: trackId, modules, updated_at: new Date().toISOString() });
+        
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error("Error saving curriculum to Supabase:", err);
+      return false;
+    }
+  }
+
+  // --- Practice Sheets API ---
+  async getPracticeSheets(): Promise<any[]> {
+    if (!this.isConfigured) return [];
+    try {
+      const { data, error } = await this.supabase
+        .from('practice_sheets')
+        .select('*')
+        .order('created_at', { ascending: false });
+        
+      if (error) throw error;
+      return data || [];
+    } catch (err) {
+      console.error("Error fetching practice sheets from Supabase:", err);
+      return [];
+    }
+  }
+
+  async savePracticeSheet(sheet: any): Promise<boolean> {
+    if (!this.isConfigured) return false;
+    try {
+      const { error } = await this.supabase
+        .from('practice_sheets')
+        .upsert({ ...sheet, updated_at: new Date().toISOString() });
+        
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error("Error saving practice sheet to Supabase:", err);
+      return false;
+    }
+  }
+
+  async deletePracticeSheet(id: string): Promise<boolean> {
+    if (!this.isConfigured) return false;
+    try {
+      const { error } = await this.supabase
+        .from('practice_sheets')
+        .delete()
+        .eq('id', id);
+        
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error("Error deleting practice sheet from Supabase:", err);
+      return false;
+    }
   }
 }
 
