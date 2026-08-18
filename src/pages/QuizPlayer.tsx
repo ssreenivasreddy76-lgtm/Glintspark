@@ -28,6 +28,18 @@ export const MOCK_QUESTIONS: Record<string, any[]> = {
       question: 'If the price of a book is first decreased by 25% and then increased by 20%, then the net change in the price will be:',
       options: ['10% decrease', '5% decrease', 'No change', '10% increase'],
       correctAnswer: 0,
+    },
+    {
+      id: 4,
+      question: 'The average age of a class of 30 students is 15 years. If the teacher’s age is included, the average increases by 1. What is the teacher’s age?',
+      options: ['40 years', '46 years', '45 years', '50 years'],
+      correctAnswer: 1,
+    },
+    {
+      id: 5,
+      question: 'A shopkeeper sells an item at a profit of 20%. If he had bought it at 20% less and sold it for ₹18 less, he would have gained 25%. What is the cost price?',
+      options: ['₹375', '₹400', '₹450', '₹500'],
+      correctAnswer: 0,
     }
   ],
   'reasoning-logic': [
@@ -41,6 +53,104 @@ export const MOCK_QUESTIONS: Record<string, any[]> = {
       id: 2,
       question: 'SCD, TEF, UGH, ____, WKL. What comes next?',
       options: ['CMN', 'UJI', 'VIJ', 'IJT'],
+      correctAnswer: 2,
+    },
+    {
+      id: 3,
+      question: 'Pointing to a photograph, a man said, "I have no brother or sister, but that man\'s father is my father\'s son." Whose photograph was it?',
+      options: ['His son\'s', 'His father\'s', 'His nephew\'s', 'His own'],
+      correctAnswer: 0,
+    },
+    {
+      id: 4,
+      question: 'Statements: All mangoes are golden. No golden things are cheap. Conclusion I: All mangoes are cheap. Conclusion II: Golden-colored mangoes are not cheap.',
+      options: ['Only I follows', 'Only II follows', 'Either I or II follows', 'Neither follows'],
+      correctAnswer: 1,
+    }
+  ],
+  'arithmetic-mastery': [
+    {
+      id: 1,
+      question: 'What is the greatest number that will divide 43, 91 and 183 so as to leave the same remainder in each case?',
+      options: ['4', '7', '9', '13'],
+      correctAnswer: 0,
+    },
+    {
+      id: 2,
+      question: 'The ratio of two numbers is 3 : 4 and their HCF is 4. Their LCM is:',
+      options: ['12', '16', '24', '48'],
+      correctAnswer: 3,
+    },
+    {
+      id: 3,
+      question: 'If 20% of a = b, then b% of 20 is the same as:',
+      options: ['4% of a', '5% of a', '20% of a', 'None of these'],
+      correctAnswer: 0,
+    },
+    {
+      id: 4,
+      question: 'Find the unit digit in the product (784 × 618 × 917 × 463):',
+      options: ['2', '3', '4', '8'],
+      correctAnswer: 0,
+    }
+  ],
+  'analytical-logic': [
+    {
+      id: 1,
+      question: 'Five people A, B, C, D, and E are sitting in a row facing North. C is sitting between A and E. B is sitting at the extreme right end. D is to the immediate left of B. Who is sitting in the middle?',
+      options: ['A', 'C', 'E', 'D'],
+      correctAnswer: 1,
+    },
+    {
+      id: 2,
+      question: 'A person walks 4 km North, then turns right and walks 3 km. How far and in what direction is he from the starting point?',
+      options: ['5 km North-East', '7 km East', '5 km South-East', '4 km North'],
+      correctAnswer: 0,
+    },
+    {
+      id: 3,
+      question: 'Which word does NOT belong with the others?',
+      options: ['Parsley', 'Basil', 'Dill', 'Mayonnaise'],
+      correctAnswer: 3,
+    }
+  ],
+  'time-speed-work': [
+    {
+      id: 1,
+      question: 'A can do a piece of work in 10 days, and B can do the same work in 15 days. If they work together, in how many days will the work be completed?',
+      options: ['5 days', '6 days', '8 days', '9 days'],
+      correctAnswer: 1,
+    },
+    {
+      id: 2,
+      question: 'A car travels at 60 km/hr for the first half of a journey and at 40 km/hr for the second half. What is the average speed of the car for the entire journey?',
+      options: ['48 km/hr', '50 km/hr', '52 km/hr', '45 km/hr'],
+      correctAnswer: 0,
+    },
+    {
+      id: 3,
+      question: 'Two trains running in opposite directions cross a man standing on the platform in 27 seconds and 17 seconds respectively and they cross each other in 23 seconds. The ratio of their speeds is:',
+      options: ['1 : 3', '3 : 2', '3 : 4', '2 : 3'],
+      correctAnswer: 1,
+    }
+  ],
+  'coding-decoding-relations': [
+    {
+      id: 1,
+      question: 'If in a certain code language "COMPUTER" is written as "RFUVQNPC", how will "MEDICINE" be written in that code?',
+      options: ['EOJDJEFM', 'EOJDEJFM', 'MFEJDJOE', 'EOJDJFEM'],
+      correctAnswer: 0,
+    },
+    {
+      id: 2,
+      question: 'If A is the brother of B; B is the sister of C; and C is the father of D, how is D related to A?',
+      options: ['Brother', 'Sister', 'Nephew / Niece', 'Cannot be determined'],
+      correctAnswer: 2,
+    },
+    {
+      id: 3,
+      question: 'In a code, 256 means "you are good", 637 means "we are bad", and 358 means "good and bad". Which digit stands for "and"?',
+      options: ['2', '5', '8', '3'],
       correctAnswer: 2,
     }
   ],

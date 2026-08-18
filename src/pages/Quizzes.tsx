@@ -54,9 +54,9 @@ export const mockQuizzes: QuizItem[] = [
     category: 'Reasoning',
     trackBadge: 'Critical Thinking',
     description: 'Sharpen analytical reasoning, sequence patterns, blood relations, and syllogisms.',
-    questions: 15,
-    timeLimit: 20,
-    xpReward: 100,
+    questions: 10,
+    timeLimit: 15,
+    xpReward: 50,
     iconName: 'Brain',
     color: 'text-purple-500',
     bg: 'bg-purple-50/80',
@@ -66,158 +66,72 @@ export const mockQuizzes: QuizItem[] = [
     passRate: '86%'
   },
   {
-    id: 'tech-react-basics',
-    title: 'React 18 & State Architecture',
-    category: 'Technical',
-    trackBadge: 'Frontend Engineering',
-    description: 'Assess practical knowledge on React hooks, fiber reconciliation, contexts, and optimization.',
-    questions: 15,
-    timeLimit: 20,
-    xpReward: 120,
-    iconName: 'Code',
+    id: 'arithmetic-mastery',
+    title: 'Number Systems & Arithmetic Mastery',
+    category: 'Aptitude',
+    trackBadge: 'Speed Math',
+    description: 'Test your grasp on HCF, LCM, Divisibility, Fractions, and Ratio-Proportion fundamentals.',
+    questions: 10,
+    timeLimit: 15,
+    xpReward: 50,
+    iconName: 'Calculator',
+    color: 'text-emerald-500',
+    bg: 'bg-emerald-50/80',
+    borderHover: 'group-hover:border-emerald-500/40',
+    difficulty: 'Easy',
+    attemptsCount: 1950,
+    passRate: '91%'
+  },
+  {
+    id: 'analytical-logic',
+    title: 'Analytical & Deductive Logic',
+    category: 'Reasoning',
+    trackBadge: 'Pattern Recognition',
+    description: 'Evaluate your ability to deduce conclusions from statements, seating layouts, and directional puzzles.',
+    questions: 10,
+    timeLimit: 15,
+    xpReward: 50,
+    iconName: 'Brain',
     color: 'text-cyan-500',
     bg: 'bg-cyan-50/80',
     borderHover: 'group-hover:border-cyan-500/40',
     difficulty: 'Medium',
-    attemptsCount: 4120,
-    passRate: '79%'
+    attemptsCount: 2310,
+    passRate: '84%'
   },
   {
-    id: 'core-java-oop',
-    title: 'Core Java & OOPs Mastery',
-    category: 'Technical',
-    trackBadge: 'Enterprise Software',
-    description: 'Deep-dive into polymorphism, multi-threading, JVM memory model, and collections framework.',
-    questions: 15,
-    timeLimit: 20,
-    xpReward: 100,
-    iconName: 'Terminal',
+    id: 'time-speed-work',
+    title: 'Time, Speed & Work Speedrun',
+    category: 'Aptitude',
+    trackBadge: 'Interview Math',
+    description: 'Solve real-world problems on relative speeds, trains, pipes & cisterns, and collaborative work rates.',
+    questions: 10,
+    timeLimit: 15,
+    xpReward: 50,
+    iconName: 'Calculator',
     color: 'text-amber-500',
     bg: 'bg-amber-50/80',
     borderHover: 'group-hover:border-amber-500/40',
     difficulty: 'Medium',
-    attemptsCount: 3810,
-    passRate: '84%'
+    attemptsCount: 3120,
+    passRate: '80%'
   },
   {
-    id: 'sql-databases',
-    title: 'SQL Queries & Database Internals',
-    category: 'Core CS',
-    trackBadge: 'Data Systems',
-    description: 'Test your expertise on complex joins, indexing strategies, normalization, and ACID properties.',
-    questions: 12,
+    id: 'coding-decoding-relations',
+    title: 'Coding, Decoding & Blood Relations',
+    category: 'Reasoning',
+    trackBadge: 'Logic Puzzles',
+    description: 'Master cipher substitution, family tree deductions, and alphanumeric matrix sequencing.',
+    questions: 10,
     timeLimit: 15,
-    xpReward: 80,
-    iconName: 'Database',
-    color: 'text-emerald-500',
-    bg: 'bg-emerald-50/80',
-    borderHover: 'group-hover:border-emerald-500/40',
-    difficulty: 'Easy',
-    attemptsCount: 2950,
-    passRate: '90%'
-  },
-  {
-    id: 'python-mastery',
-    title: 'Python 3 Advanced Concepts',
-    category: 'Technical',
-    trackBadge: 'Backend & Data',
-    description: 'Evaluate your grasp of generators, decorators, async/await, memory management, and typing.',
-    questions: 15,
-    timeLimit: 20,
-    xpReward: 120,
-    iconName: 'Zap',
-    color: 'text-blue-500',
-    bg: 'bg-blue-50/80',
-    borderHover: 'group-hover:border-blue-500/40',
-    difficulty: 'Medium',
-    attemptsCount: 3640,
-    passRate: '81%'
-  },
-  {
-    id: 'dsa-essentials',
-    title: 'Data Structures & Algorithms',
-    category: 'Core CS',
-    trackBadge: 'Coding Interviews',
-    description: 'Solve fast-paced MCQs on trees, graphs, dynamic programming, and asymptotic complexity.',
-    questions: 20,
-    timeLimit: 30,
-    xpReward: 200,
-    iconName: 'Layers',
+    xpReward: 50,
+    iconName: 'Brain',
     color: 'text-rose-500',
     bg: 'bg-rose-50/80',
     borderHover: 'group-hover:border-rose-500/40',
-    difficulty: 'Hard',
-    attemptsCount: 5120,
-    passRate: '68%',
-    featured: true
-  },
-  {
-    id: 'os-concurrency',
-    title: 'Operating Systems & Concurrency',
-    category: 'Core CS',
-    trackBadge: 'Systems & Core',
-    description: 'Key questions on process scheduling, virtual memory, paging, deadlocks, and IPC.',
-    questions: 15,
-    timeLimit: 20,
-    xpReward: 100,
-    iconName: 'Cpu',
-    color: 'text-violet-500',
-    bg: 'bg-violet-50/80',
-    borderHover: 'group-hover:border-violet-500/40',
-    difficulty: 'Medium',
-    attemptsCount: 2150,
-    passRate: '77%'
-  },
-  {
-    id: 'computer-networks',
-    title: 'Computer Networks & Protocols',
-    category: 'Core CS',
-    trackBadge: 'Networking',
-    description: 'Master OSI layers, TCP/IP handshakes, DNS routing, subnetting, and HTTP/HTTPS security.',
-    questions: 15,
-    timeLimit: 20,
-    xpReward: 100,
-    iconName: 'Network',
-    color: 'text-teal-500',
-    bg: 'bg-teal-50/80',
-    borderHover: 'group-hover:border-teal-500/40',
-    difficulty: 'Medium',
-    attemptsCount: 2430,
-    passRate: '83%'
-  },
-  {
-    id: 'verbal-ability',
-    title: 'Verbal Ability & Business English',
-    category: 'Verbal',
-    trackBadge: 'Communication',
-    description: 'Refine sentence corrections, active vocabulary, reading comprehension, and error spotting.',
-    questions: 12,
-    timeLimit: 15,
-    xpReward: 60,
-    iconName: 'BookOpen',
-    color: 'text-emerald-500',
-    bg: 'bg-emerald-50/80',
-    borderHover: 'group-hover:border-emerald-500/40',
     difficulty: 'Easy',
-    attemptsCount: 1980,
-    passRate: '94%'
-  },
-  {
-    id: 'cloud-devops',
-    title: 'Cloud Computing & Docker Basics',
-    category: 'Technical',
-    trackBadge: 'DevOps & Infra',
-    description: 'Fundamental evaluation of containerization, CI/CD pipelines, AWS primitives, and microservices.',
-    questions: 15,
-    timeLimit: 20,
-    xpReward: 150,
-    iconName: 'Server',
-    color: 'text-sky-500',
-    bg: 'bg-sky-50/80',
-    borderHover: 'group-hover:border-sky-500/40',
-    difficulty: 'Hard',
-    attemptsCount: 1870,
-    passRate: '72%'
+    attemptsCount: 2740,
+    passRate: '89%'
   }
 ];
 
@@ -238,7 +152,6 @@ const ICONS_MAP: Record<string, any> = {
 export default function Quizzes() {
   const { user } = useAuth();
   const [activeCategory, setActiveCategory] = useState<string>('All');
-  const [difficultyFilter, setDifficultyFilter] = useState<'All' | 'Easy' | 'Medium' | 'Hard'>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [quizzes, setQuizzes] = useState<QuizItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -270,156 +183,37 @@ export default function Quizzes() {
     }
   }, [user]);
 
-  // Filter Categories list with counts
+  // Filter Categories list with counts (All, Aptitude & Reasoning)
   const categories = useMemo(() => {
-    const counts: Record<string, number> = { All: quizzes.length };
-    quizzes.forEach(q => {
-      counts[q.category] = (counts[q.category] || 0) + 1;
-    });
+    const aptCount = quizzes.filter(q => q.category === 'Aptitude' || q.category === 'Reasoning' || q.category === 'Aptitude & Reasoning').length;
     return [
-      { id: 'All', label: 'All Assessments', count: counts['All'] || 0 },
-      { id: 'Aptitude', label: 'Aptitude', count: counts['Aptitude'] || 0 },
-      { id: 'Reasoning', label: 'Reasoning', count: counts['Reasoning'] || 0 },
-      { id: 'Technical', label: 'Tech & Languages', count: counts['Technical'] || 0 },
-      { id: 'Core CS', label: 'Core Computer Science', count: counts['Core CS'] || 0 },
-      { id: 'Verbal', label: 'Verbal English', count: counts['Verbal'] || 0 }
+      { id: 'All', label: 'All', count: quizzes.length },
+      { id: 'Aptitude & Reasoning', label: 'Aptitude & Reasoning', count: aptCount }
     ];
   }, [quizzes]);
 
   // Filtered Quizzes Logic
   const filteredQuizzes = useMemo(() => {
     return quizzes.filter(q => {
-      const matchCategory = activeCategory === 'All' || q.category === activeCategory;
-      const matchDifficulty = difficultyFilter === 'All' || q.difficulty === difficultyFilter;
+      const matchCategory = activeCategory === 'All' || 
+        (activeCategory === 'Aptitude & Reasoning' ? (q.category === 'Aptitude' || q.category === 'Reasoning' || q.category === 'Aptitude & Reasoning') : q.category === activeCategory);
       const matchSearch = searchQuery.trim() === '' || 
         q.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         q.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
         q.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (q.trackBadge && q.trackBadge.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchCategory && matchDifficulty && matchSearch;
+      return matchCategory && matchSearch;
     });
-  }, [quizzes, activeCategory, difficultyFilter, searchQuery]);
-
-  // Featured Daily Quiz Spotlight
-  const featuredQuiz = useMemo(() => {
-    return quizzes.find(q => q.featured) || quizzes[0];
-  }, [quizzes]);
+  }, [quizzes, activeCategory, searchQuery]);
 
   return (
     <div className="bg-[#f8fafc] min-h-screen pb-24">
-      {/* ── Hero Section ── */}
-      <section className="relative overflow-hidden bg-slate-950 text-white pt-28 pb-20 border-b border-slate-800">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-blue-900/30 via-slate-950 to-slate-950 pointer-events-none" />
-        
-        {/* Ambient Grid Pattern */}
-        <div 
-          className="absolute inset-0 opacity-10 pointer-events-none"
-          style={{
-            backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,0.4) 1px, transparent 0)`,
-            backgroundSize: '28px 28px'
-          }}
-        />
-
-        <div className="max-w-7xl mx-auto px-6 relative z-10">
-          <div className="flex flex-col lg:flex-row items-center justify-between gap-12">
-            
-            {/* Left Header Content */}
-            <div className="max-w-2xl text-center lg:text-left">
-              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-primary/10 border border-brand-primary/30 text-cyan-400 text-[12px] font-bold tracking-wide uppercase mb-6 shadow-sm">
-                <Sparkles size={14} className="text-cyan-400 animate-pulse" />
-                Adaptive Assessment & Aptitude Engine
-              </div>
-              
-              <h1 className="text-3xl md:text-5xl font-black text-white tracking-tight leading-tight mb-4 font-outfit">
-                Master Technical, Logical & <span className="bg-gradient-to-r from-cyan-400 via-teal-300 to-emerald-400 bg-clip-text text-transparent">Aptitude Quizzes</span>
-              </h1>
-              
-              <p className="text-slate-400 text-[16px] leading-relaxed mb-8 max-w-xl">
-                Benchmark your speed, accuracy, and core problem-solving aptitude with industry-standard timed assessments. Level up your XP rank today.
-              </p>
-
-              {/* Stat Badges */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4 text-center lg:text-left">
-                  <div className="text-2xl font-black text-white font-mono">{quizzes.length}+</div>
-                  <div className="text-xs font-semibold text-slate-400">Total Quizzes</div>
-                </div>
-                <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4 text-center lg:text-left">
-                  <div className="text-2xl font-black text-amber-400 font-mono">+250 XP</div>
-                  <div className="text-xs font-semibold text-slate-400">Max Reward</div>
-                </div>
-                <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4 text-center lg:text-left">
-                  <div className="text-2xl font-black text-emerald-400 font-mono">15-30m</div>
-                  <div className="text-xs font-semibold text-slate-400">Fast-Paced</div>
-                </div>
-                <div className="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-4 text-center lg:text-left">
-                  <div className="text-2xl font-black text-cyan-400 font-mono">100%</div>
-                  <div className="text-xs font-semibold text-slate-400">Free Practice</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Daily Highlight Spotlight */}
-            {featuredQuiz && (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="w-full lg:max-w-md bg-gradient-to-b from-slate-900/90 to-slate-950 border border-slate-700/60 rounded-3xl p-7 shadow-2xl relative group overflow-hidden"
-              >
-                <div className="absolute top-0 right-0 w-36 h-36 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-
-                <div className="flex items-center justify-between mb-4">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider">
-                    <Flame size={14} /> Spotlight Quiz of the Day
-                  </span>
-                  <span className="text-xs font-bold text-slate-400 flex items-center gap-1">
-                    <Users size={13} /> {featuredQuiz.attemptsCount || 2500}+ taken
-                  </span>
-                </div>
-
-                <h3 className="text-xl font-bold text-white mb-2 group-hover:text-cyan-400 transition-colors">
-                  {featuredQuiz.title}
-                </h3>
-                <p className="text-slate-400 text-sm leading-relaxed mb-6 line-clamp-2">
-                  {featuredQuiz.description}
-                </p>
-
-                <div className="flex items-center gap-4 py-3 px-4 rounded-xl bg-slate-800/60 border border-slate-700/50 mb-6 text-sm">
-                  <div className="flex items-center gap-1.5 text-slate-300 font-medium">
-                    <Clock size={15} className="text-cyan-400" /> {featuredQuiz.timeLimit} mins
-                  </div>
-                  <div className="w-1 h-1 rounded-full bg-slate-600" />
-                  <div className="flex items-center gap-1.5 text-slate-300 font-medium">
-                    <Target size={15} className="text-emerald-400" /> {featuredQuiz.questions} Questions
-                  </div>
-                  <div className="w-1 h-1 rounded-full bg-slate-600" />
-                  <div className="flex items-center gap-1.5 text-amber-400 font-bold">
-                    <Award size={15} /> +{featuredQuiz.xpReward} XP
-                  </div>
-                </div>
-
-                <Link
-                  to={`/quizzes/${featuredQuiz.id}`}
-                  className="w-full py-3.5 px-6 rounded-xl font-bold text-slate-950 bg-gradient-to-r from-cyan-400 to-teal-400 hover:from-cyan-300 hover:to-teal-300 transition-all flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 group"
-                >
-                  <span>Launch Daily Assessment</span>
-                  <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                </Link>
-              </motion.div>
-            )}
-
-          </div>
-        </div>
-      </section>
-
       {/* ── Main Content Area ── */}
-      <div className="max-w-7xl mx-auto px-6 pt-12">
+      <div className="max-w-7xl mx-auto px-6 pt-8">
         
-        {/* Search and Filter Controls */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-          
-          {/* Search Bar */}
-          <div className="relative w-full md:w-96">
+        {/* Search Bar */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-8 shadow-sm flex items-center justify-between gap-4">
+          <div className="relative w-full">
             <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
@@ -436,26 +230,6 @@ export default function Quizzes() {
                 Clear
               </button>
             )}
-          </div>
-
-          {/* Difficulty Dropdown Filter */}
-          <div className="flex items-center gap-3 w-full md:w-auto justify-end">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">Difficulty:</span>
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-              {(['All', 'Easy', 'Medium', 'Hard'] as const).map(diff => (
-                <button
-                  key={diff}
-                  onClick={() => setDifficultyFilter(diff)}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                    difficultyFilter === diff 
-                      ? 'bg-white text-slate-900 shadow-sm' 
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  {diff}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
 
